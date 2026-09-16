@@ -5,15 +5,25 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   // Always auto-fetch database & settings from Google Sheets on app load (even on login screen)
-  autoFetchFromGoogleSheets();
+  autoFetchFromGoogleSheets(false);
 
   // Check if authenticated
-  if (window.authSystem.isAuthenticated()) {
+  if (window.authSystem && window.authSystem.isAuthenticated()) {
     initAppShell();
   }
 
   // Initial Route Trigger
-  window.router.handleRoute();
+  if (window.router) window.router.handleRoute();
+
+  // Auto-fetch on window focus (when returning to browser tab)
+  window.addEventListener('focus', () => {
+    autoFetchFromGoogleSheets(true);
+  });
+
+  // Background real-time polling every 15 seconds
+  setInterval(() => {
+    autoFetchFromGoogleSheets(true);
+  }, 15000);
 });
 
 function initAppShell() {
@@ -208,7 +218,7 @@ function initAppShell() {
   setInterval(updateLiveClock, 1000);
 
   // Auto-fetch real database from Google Sheets on app load
-  autoFetchFromGoogleSheets();
+  autoFetchFromGoogleSheets(false);
 }
 
 function updateLiveClock() {
@@ -221,21 +231,35 @@ function updateLiveClock() {
   }
 }
 
-function autoFetchFromGoogleSheets() {
+function autoFetchFromGoogleSheets(silent = false) {
   const settings = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
   const sheetsUrl = settings.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
   
-  if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
-    const isStudentsEmpty = (!window.db.data.students || window.db.data.students.length === 0);
-    console.log('Auto-fetching database from Google Sheets...');
-    window.db.syncFromGoogleSheets(sheetsUrl).then(counts => {
-      console.log('Auto fetched from Google Sheets successfully:', counts);
-      if (isStudentsEmpty && window.utils && window.utils.showToast) {
-        window.utils.showToast(`⚡ ซิงก์ดึงข้อมูลจริงจาก Google Sheets อัตโนมัติสำเร็จ (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร)`, 'success', 3500);
-      }
-      if (window.router) window.router.handleRoute();
-    }).catch(err => {
-      console.warn('Auto fetch from Google Sheets skipped:', err.message);
-    });
+  if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) return;
+
+  const currentStudentCount = (window.db.data.students || []).length;
+  const currentDocCount = (window.db.data.documents || []).length;
+
+  if (!silent) {
+    console.log('Auto-fetching database from Google Sheets & Drive...');
   }
+
+  window.db.syncFromGoogleSheets(sheetsUrl).then(counts => {
+    const hasChanged = (counts.studentCount !== currentStudentCount || counts.docCount !== currentDocCount);
+    if (!silent) {
+      console.log('Auto fetched from Google Sheets successfully:', counts);
+      if (currentStudentCount === 0 && window.utils && window.utils.showToast) {
+        window.utils.showToast(`⚡ ซิงก์ดึงข้อมูลจริงจาก Google Sheets & Drive อัตโนมัติสำเร็จ (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร)`, 'success', 3500);
+      }
+    }
+    // Auto-update UI if data changed or initial fetch
+    if (hasChanged || (!silent && currentStudentCount === 0)) {
+      if (window.router && typeof window.router.handleRoute === 'function') {
+        window.router.handleRoute();
+      }
+    }
+  }).catch(err => {
+    if (!silent) console.warn('Auto fetch from Google Sheets skipped:', err.message);
+  });
 }
+window.autoFetchFromGoogleSheets = autoFetchFromGoogleSheets;

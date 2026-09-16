@@ -879,7 +879,8 @@ class RelationalDatabase {
       books: this.data.books || [],
       loans: this.data.loans || [],
       storage_locations: this.data.storage_locations || [],
-      settings: this.data.settings || {}
+      settings: this.data.settings || {},
+      deleted_keys: this.data.deleted_keys || {}
     };
 
     let res;
