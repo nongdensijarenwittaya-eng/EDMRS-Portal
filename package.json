@@ -1,0 +1,26 @@
+{
+  "name": "educational-document-system",
+  "version": "2.5.0",
+  "description": "Educational Document Management and Retrieval System (ระบบจัดเก็บและสืบค้นข้อมูลเอกสารทางการศึกษา ปพ.)",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js"
+  },
+  "keywords": [
+    "education",
+    "por-por",
+    "document-management",
+    "qr-code",
+    "location-finder",
+    "thai-school"
+  ],
+  "author": "Antigravity Engineering",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}

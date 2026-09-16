@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบจัดเก็บและสืบค้นข้อมูลเอกสารทางการศึกษา (ปพ.) - EDMRS</title>
+  <meta name="description" content="ระบบบริหารจัดการและสืบค้นเอกสารทางการศึกษา (ปพ.1 - ปพ.9) ประจำสถานศึกษา">
+  <link rel="icon" id="app-favicon" href="https://lh3.googleusercontent.com/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Icon Fonts & CDNs -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- Application Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body class="theme-light">
+  <div id="app" class="app-wrapper">
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo-wrapper">
+          <img id="app-logo" src="assets/logo.png" alt="Logo" class="brand-logo" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2248%22 fill=%22%231e3a8a%22/><text x=%2250%22 y=%2265%22 font-size=%2245%22 fill=%22white%22 text-anchor=%22middle%22 font-weight=%22bold%22 font-family=%22sans-serif%22>ปพ.</text></svg>'">
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title" id="app-name-th">ระบบจัดเก็บเอกสาร ปพ.</h1>
+          <span class="brand-subtitle" id="app-name-en">EDMRS Portal</span>
+        </div>
+        <button id="sidebar-close-btn" class="icon-btn mobile-only" aria-label="Close sidebar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="sidebar-user-card" id="sidebar-user-info">
+        <div class="avatar-circle" id="user-avatar">A</div>
+        <div class="user-details">
+          <span class="user-name" id="user-display-name">ผู้ดูแลระบบ</span>
+          <span class="user-role-badge" id="user-role-badge">Super Admin</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">เมนูหลัก</div>
+        <ul class="nav-list">
+          <li>
+            <a href="#dashboard" class="nav-link active" data-route="dashboard">
+              <i class="fa-solid fa-chart-pie"></i>
+              <span>แดชบอร์ด</span>
+            </a>
+          </li>
+          <li>
+            <a href="#students" class="nav-link" data-route="students">
+              <i class="fa-solid fa-user-graduate"></i>
+              <span>ข้อมูลนักเรียน</span>
+            </a>
+          </li>
+          <li>
+            <a href="#books" class="nav-link" data-route="books">
+              <i class="fa-solid fa-book-bookmark"></i>
+              <span>ทะเบียนเล่มเอกสาร</span>
+            </a>
+          </li>
+          <li>
+            <a href="#locations" class="nav-link" data-route="locations">
+              <i class="fa-solid fa-boxes-stacked"></i>
+              <span>สถานที่จัดเก็บ</span>
+            </a>
+          </li>
+        </ul>
+
+        <div class="nav-section-title">งานบริการ & ตรวจสอบ</div>
+        <ul class="nav-list">
+          <li>
+            <a href="#loans" class="nav-link" data-route="loans">
+              <i class="fa-solid fa-file-signature"></i>
+              <span>คำขอสำเนาเอกสาร ปพ.</span>
+              <span class="nav-badge danger" id="active-loans-badge">0</span>
+            </a>
+          </li>
+          <li>
+            <a href="#verification" class="nav-link" data-route="verification">
+              <i class="fa-solid fa-list-check"></i>
+              <span>ตรวจสอบเอกสาร</span>
+            </a>
+          </li>
+          <li>
+            <a href="#qr-scanner" class="nav-link" data-route="qr-scanner">
+              <i class="fa-solid fa-qrcode"></i>
+              <span>ระบบ QR / Barcode</span>
+            </a>
+          </li>
+          <li>
+            <a href="#reports" class="nav-link" data-route="reports">
+              <i class="fa-solid fa-chart-column"></i>
+              <span>รายงาน & สถิติ</span>
+            </a>
+          </li>
+        </ul>
+
+        <div class="nav-section-title">การบริหารจัดการ</div>
+        <ul class="nav-list">
+          <li>
+            <a href="#import" class="nav-link" data-route="import">
+              <i class="fa-solid fa-file-import"></i>
+              <span>นำเข้าข้อมูล Excel/CSV</span>
+            </a>
+          </li>
+          <li>
+            <a href="#audit-log" class="nav-link" data-route="audit-log">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              <span>ประวัติการแก้ไข (Audit Log)</span>
+            </a>
+          </li>
+          <li>
+            <a href="#users" class="nav-link" data-route="users">
+              <i class="fa-solid fa-user-shield"></i>
+              <span>ผู้ใช้งาน & สิทธิ์การเข้าถึง</span>
+            </a>
+          </li>
+          <li>
+            <a href="#settings" class="nav-link" data-route="settings">
+              <i class="fa-solid fa-gears"></i>
+              <span>ตั้งค่าระบบ</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="logout-btn" class="logout-btn">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          <span>ออกจากระบบ</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Top Navigation Bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <img id="topbar-logo" src="https://lh3.googleusercontent.com/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU" alt="School Logo" class="topbar-school-logo">
+          <div class="school-header-info">
+            <span class="org-name-text" id="topbar-org-name">โรงเรียนสาธิตวิทยาการการศึกษา</span>
+            <span class="system-tag">EDMRS v2.5 Enterprise</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Quick QR Scan Button -->
+          <button id="quick-scan-btn" class="topbar-action-btn topbar-btn-scan" title="สแกน QR Code">
+            <i class="fa-solid fa-qrcode"></i>
+          </button>
+
+          <!-- Fetch Real Data from Google Sheets Button -->
+          <button id="fetch-sheets-data-btn" class="topbar-action-btn topbar-btn-fetch" title="ดึงข้อมูลจริงจาก Google Sheets">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+          </button>
+
+          <!-- Push Data to Google Sheets Button -->
+          <button id="push-sheets-data-btn" class="topbar-action-btn topbar-btn-push" title="บันทึกและส่งข้อมูลลง Google Sheets">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </button>
+
+          <!-- Academic Year Selector -->
+          <div class="academic-year-pill">
+            <i class="fa-solid fa-calendar-days"></i>
+            <span class="year-label">ปีการศึกษา:</span>
+            <select id="active-academic-year-select" class="year-select">
+              <option value="2569">2569</option>
+              <option value="2568">2568</option>
+              <option value="2567">2567</option>
+              <option value="2566">2566</option>
+              <option value="2565">2565</option>
+            </select>
+          </div>
+
+          <!-- Notification Dropdown -->
+          <div class="dropdown-wrapper">
+            <button id="notification-btn" class="icon-btn notification-btn" aria-label="Notifications">
+              <i class="fa-solid fa-bell"></i>
+              <span class="notification-badge" id="notification-count">0</span>
+            </button>
+            <div id="notification-dropdown" class="dropdown-menu notification-menu">
+              <div class="dropdown-header">
+                <h3><i class="fa-solid fa-bell"></i> การแจ้งเตือน</h3>
+                <button id="mark-all-read-btn" class="btn-text">อ่านทั้งหมด</button>
+              </div>
+              <div class="dropdown-body" id="notification-list">
+                <div class="empty-notice">ไม่มีการแจ้งเตือนใหม่</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- User Account Menu -->
+          <div class="dropdown-wrapper">
+            <button id="user-menu-btn" class="user-menu-btn">
+              <div class="user-avatar-sm" id="user-avatar-top">A</div>
+              <span class="username-top" id="username-top">admin</span>
+              <i class="fa-solid fa-chevron-down caret-icon"></i>
+            </button>
+            <div id="user-dropdown" class="dropdown-menu user-menu">
+              <div class="user-dropdown-header">
+                <div class="full-name" id="user-full-name-dropdown">ผู้ดูแลระบบสูงสุด</div>
+                <div class="role-name" id="user-role-dropdown">Super Administrator</div>
+              </div>
+              <hr class="dropdown-divider">
+              <a href="#settings" class="dropdown-item"><i class="fa-solid fa-sliders"></i> ตั้งค่าโปรไฟล์</a>
+              <a href="#audit-log" class="dropdown-item"><i class="fa-solid fa-shield-halved"></i> Audit Logs</a>
+              <hr class="dropdown-divider">
+              <button id="user-logout-dropdown-btn" class="dropdown-item text-danger">
+                <i class="fa-solid fa-power-off"></i> ออกจากระบบ
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Breadcrumb Bar -->
+      <div class="breadcrumb-container">
+        <ol class="breadcrumb" id="breadcrumb-list">
+          <li class="breadcrumb-item"><a href="#dashboard"><i class="fa-solid fa-house"></i> หน้าหลัก</a></li>
+          <li class="breadcrumb-item active" id="breadcrumb-current">แดชบอร์ด</li>
+        </ol>
+        <div class="current-time-display" id="current-time-display">
+          16 กุมภาพันธ์ 2569 | 15:30 น.
+        </div>
+      </div>
+
+      <!-- Main View Content Injection Container -->
+      <main id="main-content" class="main-content">
+        <!-- Views will be dynamically rendered here by router.js -->
+      </main>
+
+      <!-- Footer -->
+      <footer class="app-footer">
+        <div class="footer-left">
+          <span>&copy; 2026 ระบบจัดเก็บและสืบค้นข้อมูลเอกสารทางการศึกษา (ปพ.) - EDMRS. All rights reserved.</span>
+        </div>
+        <div class="footer-right">
+          <span>เวอร์ชัน 2.5.0 Enterprise</span>
+          <span class="dot-separator">•</span>
+          <a href="#settings">ช่วยเหลือ & ตั้งค่า</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Reusable Modal Container -->
+  <div id="modal-container" class="modal-overlay">
+    <div id="modal-box" class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title" class="modal-title">หัวข้อโหมด</h3>
+        <button id="modal-close-btn" class="modal-close" aria-label="Close modal">&times;</button>
+      </div>
+      <div id="modal-body" class="modal-body">
+        <!-- Dynamic Modal Content -->
+      </div>
+      <div id="modal-footer" class="modal-footer">
+        <!-- Dynamic Modal Buttons -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Quick Camera Scanner Modal Container -->
+  <div id="scanner-modal-container" class="modal-overlay">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-qrcode"></i> กล้องสแกน QR Code / Barcode</h3>
+        <button id="scanner-modal-close-btn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto;"></div>
+        <div class="scanner-status text-center mt-3" id="scanner-status">กำลังเริ่มต้นกล้อง...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/db.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/utils.js"></script>
+
+  <!-- Views -->
+  <script src="js/views/loginView.js"></script>
+  <script src="js/views/dashboardView.js"></script>
+  <script src="js/views/studentsView.js"></script>
+  <script src="js/views/studentDetailView.js"></script>
+  <script src="js/views/documentsView.js"></script>
+  <script src="js/views/booksView.js"></script>
+  <script src="js/views/locationsView.js"></script>
+  <script src="js/views/qrScannerView.js"></script>
+  <script src="js/views/loansView.js"></script>
+  <script src="js/views/verificationView.js"></script>
+  <script src="js/views/reportsView.js"></script>
+  <script src="js/views/importView.js"></script>
+  <script src="js/views/auditLogView.js"></script>
+  <script src="js/views/usersView.js"></script>
+  <script src="js/views/settingsView.js"></script>
+
+  <!-- App Router & Main Controller -->
+  <script src="js/router.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
