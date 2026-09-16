@@ -123,6 +123,7 @@ class RelationalDatabase {
           });
         }
 
+        this.sanitizeAllData();
         this.save(false);
         if (!this.data.notifications) this.seedNotifications();
       } catch (e) {
@@ -131,6 +132,73 @@ class RelationalDatabase {
       }
     } else {
       this.seedDefaultData();
+    }
+  }
+
+  isJunkText(str) {
+    if (!str) return true;
+    const s = String(str).trim().toLowerCase();
+    return s.includes('blob:') || s.includes('http://') || s.includes('https://') || s.includes('uw_') || s.endsWith('.pdf');
+  }
+
+  sanitizeDocumentItem(doc) {
+    if (!doc) return doc;
+    if (this.isJunkText(doc.student_id)) doc.student_id = '';
+    if (this.isJunkText(doc.student_name)) doc.student_name = '';
+    if (this.isJunkText(doc.doc_type_code)) doc.doc_type_code = 'ปพ.1';
+    if (this.isJunkText(doc.doc_number)) doc.doc_number = '';
+
+    if (doc.student_id && (!doc.student_name || this.isJunkText(doc.student_name))) {
+      const std = this.getStudentById(doc.student_id);
+      if (std) {
+        doc.student_name = `${std.prefix || ''}${std.first_name || ''} ${std.last_name || ''}`.trim();
+      }
+    }
+    return doc;
+  }
+
+  sanitizeLoanItem(loan) {
+    if (!loan) return loan;
+    let studentId = String(loan.student_id || '').trim();
+    let studentName = String(loan.student_name || '').trim();
+    let docTypeCode = String(loan.doc_type_code || 'ปพ.1').trim();
+    let docNumber = String(loan.doc_number || '').trim();
+
+    if (this.isJunkText(docTypeCode)) docTypeCode = 'ปพ.1';
+    if (this.isJunkText(docNumber)) docNumber = '';
+    if (this.isJunkText(studentId)) studentId = '';
+    if (this.isJunkText(studentName)) studentName = '';
+
+    if (studentId && (!studentName || this.isJunkText(studentName))) {
+      const std = this.getStudentById(studentId);
+      if (std) {
+        studentName = `${std.prefix || ''}${std.first_name || ''} ${std.last_name || ''}`.trim();
+      }
+    }
+
+    if (!studentName && !studentId && loan.doc_id) {
+      const doc = (this.data.documents || []).find(d => d.id == loan.doc_id);
+      if (doc) {
+        studentId = studentId || doc.student_id || '';
+        studentName = studentName || doc.student_name || '';
+        docTypeCode = (docTypeCode === 'ปพ.1' && doc.doc_type_code) ? doc.doc_type_code : docTypeCode;
+        docNumber = docNumber || doc.doc_number || '';
+      }
+    }
+
+    loan.student_id = studentId;
+    loan.student_name = studentName;
+    loan.doc_type_code = docTypeCode;
+    loan.doc_number = docNumber;
+    return loan;
+  }
+
+  sanitizeAllData() {
+    if (Array.isArray(this.data.documents)) {
+      this.data.documents = this.data.documents.map(d => this.sanitizeDocumentItem(d));
+    }
+    if (Array.isArray(this.data.loans)) {
+      this.data.loans = this.data.loans.map(l => this.sanitizeLoanItem(l));
     }
   }
 
@@ -633,7 +701,7 @@ class RelationalDatabase {
       const parsedDocs = rows.map((row, idx) => {
         let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
 
-        if (row.length >= 10) {
+        if (row.length >= 12 || (row.length >= 10 && (String(row[1]).match(/^\d{5,}$/) || String(row[2]).includes(' ') || String(row[3]).includes('ปพ.')))) {
           docCode = String(row[0] || '').trim();
           stdId = String(row[1] || '').trim();
           stdName = String(row[2] || '').trim();
@@ -644,7 +712,7 @@ class RelationalDatabase {
           status = String(row[7] || 'stored').trim();
           locationCode = String(row[8] || '').trim();
           fileName = String(row[9] || '').trim();
-          rawDriveUrl = String(row[10] || row[8] || '').trim();
+          rawDriveUrl = String(row[10] || '').trim();
           rawDriveUrlBack = String(row[11] || '').trim();
         } else {
           docCode = String(row[0] || '').trim();
@@ -656,12 +724,13 @@ class RelationalDatabase {
           locationCode = String(row[6] || '').trim();
           fileName = String(row[7] || '').trim();
           rawDriveUrl = String(row[8] || '').trim();
+          rawDriveUrlBack = String(row[9] || '').trim();
         }
 
         const driveUrl = extractUrl(rawDriveUrl);
         const driveUrlBack = extractUrl(rawDriveUrlBack);
 
-        return {
+        return this.sanitizeDocumentItem({
           id: idx + 1,
           doc_code: docCode || `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`,
           student_id: stdId,
@@ -677,7 +746,7 @@ class RelationalDatabase {
           file_url_back: driveUrlBack || '',
           book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
           file_size: driveUrl.includes('drive') ? 'Google Drive' : '1.5 MB'
-        };
+        });
       }).filter(d => d.doc_code || d.doc_number || d.student_id);
 
       const uniqueDocs = [];
@@ -739,19 +808,22 @@ class RelationalDatabase {
     // 4. Loans / Document Copy Requests
     if (Array.isArray(sheetData.Loans) && sheetData.Loans.length > 1) {
       const rows = sheetData.Loans.slice(1);
-      const parsedLoans = rows.map((row, idx) => ({
-        id: idx + 1,
-        loan_code: String(row[0] || '').trim(),
-        student_id: String(row[1] || '').trim(),
-        student_name: String(row[2] || '').trim(),
-        doc_type_code: String(row[3] || 'ปพ.1').trim(),
-        borrower_name: String(row[4] || '').trim(),
-        borrower_dept: String(row[5] || '').trim(),
-        loan_date: String(row[6] || '').trim(),
-        return_due_date: String(row[7] || '').trim(),
-        reason: String(row[8] || '').trim(),
-        status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
-      })).filter(l => l.loan_code);
+      const parsedLoans = rows.map((row, idx) => {
+        const item = {
+          id: idx + 1,
+          loan_code: String(row[0] || '').trim(),
+          student_id: String(row[1] || '').trim(),
+          student_name: String(row[2] || '').trim(),
+          doc_type_code: String(row[3] || 'ปพ.1').trim(),
+          borrower_name: String(row[4] || '').trim(),
+          borrower_dept: String(row[5] || '').trim(),
+          loan_date: String(row[6] || '').trim(),
+          return_due_date: String(row[7] || '').trim(),
+          reason: String(row[8] || '').trim(),
+          status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
+        };
+        return this.sanitizeLoanItem(item);
+      }).filter(l => l.loan_code);
 
       const uniqueLoans = [];
       const seenLoanCodes = new Set();

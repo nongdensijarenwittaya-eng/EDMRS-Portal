@@ -422,14 +422,16 @@ const loansView = {
 
             const reqNum = String(window.db.data.loans.length + 1).padStart(3, '0');
             const loanCode = `REQ-${new Date().getFullYear()}-${reqNum}`;
-            window.db.data.loans.unshift({
+            const cleanDoc = window.db.sanitizeDocumentItem(docObj);
+
+            const newLoan = window.db.sanitizeLoanItem({
               id: window.db.data.loans.length + 1,
               loan_code: loanCode,
-              doc_id: docObj.id,
-              student_id: docObj.student_id,
-              student_name: docObj.student_name,
-              doc_type_code: docObj.doc_type_code,
-              doc_number: docObj.doc_number,
+              doc_id: cleanDoc.id,
+              student_id: cleanDoc.student_id,
+              student_name: cleanDoc.student_name,
+              doc_type_code: cleanDoc.doc_type_code || 'ปพ.1',
+              doc_number: cleanDoc.doc_number,
               borrower_name: borrower,
               borrower_dept: dept,
               loan_date: loanDate,
@@ -438,6 +440,8 @@ const loansView = {
               return_due_date: dueDate,
               status: 'pending'
             });
+
+            window.db.data.loans.unshift(newLoan);
 
             window.db.addAuditLog('คำขอสำเนาเอกสาร', 'เพิ่มคำขอสำเนา', `บันทึกคำขอสำเนาเอกสาร ${docObj.doc_code} โดย ${borrower}`);
             window.db.save();

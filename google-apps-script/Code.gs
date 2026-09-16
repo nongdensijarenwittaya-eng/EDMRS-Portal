@@ -49,11 +49,11 @@ function initSheetsStructure() {
     studentsSheet.setFrozenRows(1);
   }
 
-  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 10 คอลัมน์)
+  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 12 คอลัมน์)
   var docsSheet = ss.getSheetByName("Documents") || ss.insertSheet("Documents");
   if (docsSheet.getLastRow() === 0) {
-    docsSheet.appendRow(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
-    docsSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+    docsSheet.appendRow(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+    docsSheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
     docsSheet.setFrozenRows(1);
   }
 
@@ -361,23 +361,39 @@ function syncDocumentsSheet(documents, deletedKeys) {
     });
   }
 
+  var isJunk = function(str) {
+    if (!str) return true;
+    var s = String(str).toLowerCase();
+    return s.indexOf("blob:") !== -1 || s.indexOf("uw_") !== -1 || s.indexOf("http://") !== -1 || s.indexOf("https://") !== -1;
+  };
+
   var docMap = {};
   if (sheet.getLastRow() > 1) {
-    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
+    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
     existingValues.forEach(function(row) {
       var dcode = String(row[0] || "").trim();
       if (dcode && !deletedMap[dcode.toLowerCase()]) {
+        var stdId = String(row[1] || "");
+        var stdName = String(row[2] || "");
+        var docTypeCode = String(row[3] || "ปพ.1");
+
+        if (isJunk(stdId)) stdId = "";
+        if (isJunk(stdName)) stdName = "";
+        if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
+
         docMap[dcode.toLowerCase()] = {
           doc_code: dcode,
-          doc_type_code: String(row[1] || ""),
-          academic_year: String(row[2] || ""),
-          book_number: String(row[3] || ""),
-          doc_number: String(row[4] || ""),
-          status: String(row[5] || ""),
-          location_code: String(row[6] || ""),
-          file_name: String(row[7] || ""),
-          file_url: String(row[8] || ""),
-          file_url_back: String(row[9] || "")
+          student_id: stdId,
+          student_name: stdName,
+          doc_type_code: docTypeCode,
+          academic_year: String(row[4] || ""),
+          book_number: String(row[5] || ""),
+          doc_number: String(row[6] || ""),
+          status: String(row[7] || ""),
+          location_code: String(row[8] || ""),
+          file_name: String(row[9] || ""),
+          file_url: String(row[10] || ""),
+          file_url_back: String(row[11] || "")
         };
       }
     });
@@ -390,9 +406,19 @@ function syncDocumentsSheet(documents, deletedKeys) {
         dcode = "DOC-" + (d.doc_type_code || "ปพ.1").replace('.', '') + "-" + (d.academic_year || "2565") + "-" + (d.book_number || "01") + "-" + d.doc_number;
       }
       if (dcode && !deletedMap[dcode.toLowerCase()]) {
+        var stdId = String(d.student_id || "");
+        var stdName = String(d.student_name || "");
+        var docTypeCode = String(d.doc_type_code || "ปพ.1");
+
+        if (isJunk(stdId)) stdId = "";
+        if (isJunk(stdName)) stdName = "";
+        if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
+
         docMap[dcode.toLowerCase()] = {
           doc_code: dcode,
-          doc_type_code: String(d.doc_type_code || ""),
+          student_id: stdId,
+          student_name: stdName,
+          doc_type_code: docTypeCode,
           academic_year: String(d.academic_year || ""),
           book_number: String(d.book_number || ""),
           doc_number: String(d.doc_number || ""),
@@ -408,7 +434,7 @@ function syncDocumentsSheet(documents, deletedKeys) {
 
   sheet.clearContents();
   var rows = [];
-  rows.push(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+  rows.push(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
 
   Object.keys(docMap).forEach(function(key) {
     var d = docMap[key];
@@ -419,6 +445,8 @@ function syncDocumentsSheet(documents, deletedKeys) {
 
     rows.push([
       d.doc_code,
+      d.student_id,
+      d.student_name,
       d.doc_type_code,
       d.academic_year,
       d.book_number,
@@ -431,8 +459,8 @@ function syncDocumentsSheet(documents, deletedKeys) {
     ]);
   });
 
-  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
-  sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+  sheet.getRange(1, 1, rows.length, 12).setValues(rows);
+  sheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
 }
 
@@ -526,17 +554,31 @@ function syncLoansSheet(loans, deletedKeys) {
     });
   }
 
+  var isJunk = function(str) {
+    if (!str) return true;
+    var s = String(str).toLowerCase();
+    return s.indexOf("blob:") !== -1 || s.indexOf("uw_") !== -1 || s.indexOf("http://") !== -1 || s.indexOf("https://") !== -1 || s.indexOf(".pdf") !== -1;
+  };
+
   var loanMap = {};
   if (sheet.getLastRow() > 1) {
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues();
     existingValues.forEach(function(row) {
       var lcode = String(row[0] || "").trim();
       if (lcode && !deletedMap[lcode.toLowerCase()]) {
+        var stdId = String(row[1] || "");
+        var stdName = String(row[2] || "");
+        var docTypeCode = String(row[3] || "ปพ.1");
+
+        if (isJunk(stdId)) stdId = "";
+        if (isJunk(stdName)) stdName = "";
+        if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
+
         loanMap[lcode.toLowerCase()] = {
           loan_code: lcode,
-          student_id: String(row[1] || ""),
-          student_name: String(row[2] || ""),
-          doc_type_code: String(row[3] || "ปพ.1"),
+          student_id: stdId,
+          student_name: stdName,
+          doc_type_code: docTypeCode,
           borrower_name: String(row[4] || ""),
           borrower_dept: String(row[5] || ""),
           loan_date: String(row[6] || ""),
@@ -553,11 +595,19 @@ function syncLoansSheet(loans, deletedKeys) {
       var lcode = String(l.loan_code || "").trim();
       if (lcode && !deletedMap[lcode.toLowerCase()]) {
         var statusText = (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา';
+        var stdId = String(l.student_id || "");
+        var stdName = String(l.student_name || "");
+        var docTypeCode = String(l.doc_type_code || "ปพ.1");
+
+        if (isJunk(stdId)) stdId = "";
+        if (isJunk(stdName)) stdName = "";
+        if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
+
         loanMap[lcode.toLowerCase()] = {
           loan_code: lcode.replace('LN-', 'REQ-'),
-          student_id: String(l.student_id || ""),
-          student_name: String(l.student_name || ""),
-          doc_type_code: String(l.doc_type_code || "ปพ.1"),
+          student_id: stdId,
+          student_name: stdName,
+          doc_type_code: docTypeCode,
           borrower_name: String(l.borrower_name || ""),
           borrower_dept: String(l.borrower_dept || ""),
           loan_date: String(l.loan_date || ""),
