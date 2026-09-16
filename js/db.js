@@ -467,6 +467,15 @@ class RelationalDatabase {
     let studentCount = 0, docCount = 0, bookCount = 0, loanCount = 0, locCount = 0;
     this.data.is_mock_cleared = true;
 
+    const extractUrl = (rawStr) => {
+      if (!rawStr) return '';
+      const str = String(rawStr).trim();
+      const match = str.match(/HYPERLINK\("([^"]+)"/i);
+      if (match) return match[1];
+      if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('blob:')) return str;
+      return str;
+    };
+
     // 1. Students
     if (Array.isArray(sheetData.Students) && sheetData.Students.length > 1) {
       const rows = sheetData.Students.slice(1);
@@ -482,8 +491,8 @@ class RelationalDatabase {
         doc_number: String(row[7] || '').trim(),
         set_number: String(row[8] || '').trim(),
         book_number: String(row[8] || '').trim(),
-        file_url: String(row[9] || '').trim(),
-        file_url_back: String(row[10] || '').trim(),
+        file_url: extractUrl(row[9]),
+        file_url_back: extractUrl(row[10]),
         status: String(row[11] || 'graduated').trim()
       })).filter(s => s.student_id);
 
@@ -497,9 +506,9 @@ class RelationalDatabase {
     if (Array.isArray(sheetData.Documents) && sheetData.Documents.length > 1) {
       const rows = sheetData.Documents.slice(1);
       const parsedDocs = rows.map((row, idx) => {
-        let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '';
+        let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
 
-        if (row.length >= 11) {
+        if (row.length >= 10) {
           docCode = String(row[0] || '').trim();
           stdId = String(row[1] || '').trim();
           stdName = String(row[2] || '').trim();
@@ -510,7 +519,8 @@ class RelationalDatabase {
           status = String(row[7] || 'stored').trim();
           locationCode = String(row[8] || '').trim();
           fileName = String(row[9] || '').trim();
-          rawDriveUrl = String(row[10] || '').trim();
+          rawDriveUrl = String(row[10] || row[8] || '').trim();
+          rawDriveUrlBack = String(row[11] || '').trim();
         } else {
           docCode = String(row[0] || '').trim();
           docTypeCode = String(row[1] || 'ปพ.1').trim();
@@ -523,9 +533,8 @@ class RelationalDatabase {
           rawDriveUrl = String(row[8] || '').trim();
         }
 
-        let driveUrl = rawDriveUrl;
-        const linkMatch = driveUrl.match(/HYPERLINK\("([^"]+)"/i);
-        if (linkMatch) driveUrl = linkMatch[1];
+        const driveUrl = extractUrl(rawDriveUrl);
+        const driveUrlBack = extractUrl(rawDriveUrlBack);
 
         return {
           id: idx + 1,
@@ -540,6 +549,7 @@ class RelationalDatabase {
           location_code: locationCode,
           file_name: fileName || `ปพ_${gradYear}_${setNo}_${docNum}.pdf`,
           file_url: driveUrl || 'assets/sample_porpor.pdf',
+          file_url_back: driveUrlBack || '',
           book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
           file_size: driveUrl.includes('drive') ? 'Google Drive' : '1.5 MB'
         };

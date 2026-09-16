@@ -210,13 +210,12 @@ function autoFetchFromGoogleSheets() {
   const settings = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
   const sheetsUrl = settings.sheets_url;
   
-  // Only auto-fetch on initial cold load if localStorage is empty to prevent overwriting local edits/deletions
-  const hasLocalData = localStorage.getItem('EDMRS_RELATIONAL_DB_V2.5');
-  if (!hasLocalData && sheetsUrl && sheetsUrl.includes('script.google.com')) {
-    console.log('Auto-fetching initial database from Google Sheets...');
+  if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
+    const isStudentsEmpty = (!window.db.data.students || window.db.data.students.length === 0);
+    console.log('Auto-fetching database from Google Sheets...');
     window.db.syncFromGoogleSheets(sheetsUrl).then(counts => {
       console.log('Auto fetched from Google Sheets successfully:', counts);
-      if (window.utils && window.utils.showToast) {
+      if (isStudentsEmpty && window.utils && window.utils.showToast) {
         window.utils.showToast(`⚡ ซิงก์ดึงข้อมูลจริงจาก Google Sheets อัตโนมัติสำเร็จ (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร)`, 'success', 3500);
       }
       if (window.router) window.router.handleRoute();

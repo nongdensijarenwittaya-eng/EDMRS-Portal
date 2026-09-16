@@ -429,6 +429,15 @@ function getAllSheetData() {
   sheets.forEach(function(sh) {
     var name = sh.getName();
     var values = sh.getDataRange().getValues();
+    var formulas = sh.getDataRange().getFormulas();
+    
+    for (var r = 0; r < values.length; r++) {
+      for (var c = 0; c < values[r].length; c++) {
+        if (formulas[r] && formulas[r][c] && formulas[r][c].indexOf("HYPERLINK") !== -1) {
+          values[r][c] = formulas[r][c];
+        }
+      }
+    }
     result[name] = values;
   });
   
