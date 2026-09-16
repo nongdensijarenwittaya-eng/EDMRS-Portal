@@ -4,6 +4,9 @@
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Always auto-fetch database & settings from Google Sheets on app load (even on login screen)
+  autoFetchFromGoogleSheets();
+
   // Check if authenticated
   if (window.authSystem.isAuthenticated()) {
     initAppShell();
