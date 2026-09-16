@@ -52,6 +52,10 @@ class RelationalDatabase {
           this.data.loans = [];
         }
 
+        if (Array.isArray(this.data.storage_locations) && this.data.storage_locations.some(l => l.code === 'LOC-B02-04-01' || l.code === 'LOC-A01-01-01')) {
+          this.data.storage_locations = [];
+        }
+
         if (!this.data.audit_logs || this.data.audit_logs.length === 0) this.seedAuditLogs();
         if (!this.data.settings) this.seedSettings();
         if (!this.data.settings.logo_url || this.data.settings.logo_url === 'assets/logo.png') {
@@ -238,18 +242,7 @@ class RelationalDatabase {
   }
 
   seedStorageLocations() {
-    this.data.storage_locations = [
-      { id: 1, code: 'LOC-A01-01-01', building: 'อาคารสำนักงาน', room: 'ห้องทะเบียน 101', cabinet: 'ตู้ A-01', shelf: 'ชั้น 01', folder: 'แฟ้ม 01', description: 'ตู้เก็บเอกสาร ปพ.1 ปี 2565' },
-      { id: 2, code: 'LOC-A01-01-02', building: 'อาคารสำนักงาน', room: 'ห้องทะเบียน 101', cabinet: 'ตู้ A-01', shelf: 'ชั้น 02', folder: 'แฟ้ม 02', description: 'ตู้เก็บเอกสาร ปพ.1 ปี 2565' },
-      { id: 3, code: 'LOC-A01-02-01', building: 'อาคารสำนักงาน', room: 'ห้องทะเบียน 101', cabinet: 'ตู้ A-02', shelf: 'ชั้น 01', folder: 'แฟ้ม 03', description: 'ตู้เก็บเอกสาร ปพ.2 ปี 2565' },
-      { id: 4, code: 'LOC-A03-02-04', building: 'อาคารสำนักงาน', room: 'ห้องทะเบียน 101', cabinet: 'ตู้ A-03', shelf: 'ชั้น 02', folder: 'แฟ้ม 04', description: 'ตู้เก็บเอกสาร ปพ.1 และ ปพ.3' },
-      { id: 5, code: 'LOC-B01-01-01', building: 'อาคารวิทยบริการ', room: 'ห้องคลังเอกสาร 202', cabinet: 'ตู้ B-01', shelf: 'ชั้น 01', folder: 'แฟ้ม 01', description: 'ตู้เก็บ ปพ.7 ใบรับรอง' },
-      { id: 6, code: 'LOC-B01-02-02', building: 'อาคารวิทยบริการ', room: 'ห้องคลังเอกสาร 202', cabinet: 'ตู้ B-01', shelf: 'ชั้น 02', folder: 'แฟ้ม 02', description: 'ตู้เก็บ ปพ.6 รายงานพัฒนาการ' },
-      { id: 7, code: 'LOC-C01-03-01', building: 'อาคารเฉลิมพระเกียรติ', room: 'ห้องเก็บเอกสารเก่า', cabinet: 'ตู้ C-01', shelf: 'ชั้น 03', folder: 'แฟ้ม 01', description: 'เอกสารศิษย์เก่า ปพ.1-3' },
-      { id: 8, code: 'LOC-C02-01-05', building: 'อาคารเฉลิมพระเกียรติ', room: 'ห้องเก็บเอกสารเก่า', cabinet: 'ตู้ C-02', shelf: 'ชั้น 01', folder: 'แฟ้ม 05', description: 'แฟ้ม ปพ.4 คุณลักษณะ' },
-      { id: 9, code: 'LOC-A02-03-02', building: 'อาคารสำนักงาน', room: 'ห้องทะเบียน 101', cabinet: 'ตู้ A-02', shelf: 'ชั้น 03', folder: 'แฟ้ม 02', description: 'แฟ้ม ปพ.5 สมุดประจำวิชา' },
-      { id: 10, code: 'LOC-B02-04-01', building: 'อาคารวิทยบริการ', room: 'ห้องคลังเอกสาร 202', cabinet: 'ตู้ B-02', shelf: 'ชั้น 04', folder: 'แฟ้ม 01', description: 'แฟ้ม ปพ.8-9 เอกสารย้ายโรงเรียน' }
-    ];
+    this.data.storage_locations = [];
   }
 
   seedBooks() {
@@ -656,8 +649,9 @@ class RelationalDatabase {
     }
 
     // 7. Settings
-    if (Array.isArray(sheetData.Settings) && sheetData.Settings.length > 1) {
-      const rows = sheetData.Settings.slice(1);
+    const settingsRowsData = sheetData.Settings || sheetData.settings || sheetData['ตั้งค่าระบบ'];
+    if (Array.isArray(settingsRowsData) && settingsRowsData.length > 1) {
+      const rows = settingsRowsData.slice(1);
       const parsedSettings = { ...this.data.settings };
       rows.forEach(row => {
         const key = String(row[0] || '').trim();
@@ -681,6 +675,7 @@ class RelationalDatabase {
     this.data.documents = [];
     this.data.books = [];
     this.data.loans = [];
+    this.data.storage_locations = [];
     this.addAuditLog('ระบบ', 'ล้างข้อมูลสาธิต', 'ล้างข้อมูลปลอมทั้งหมดเพื่อรอรับข้อมูลจริงจาก Google Sheets');
     this.save(false);
   }

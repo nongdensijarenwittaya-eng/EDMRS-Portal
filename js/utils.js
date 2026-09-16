@@ -83,6 +83,133 @@ const utils = {
     }
   },
 
+  // Cloud Loading Sync Modal Overlay
+  showLoadingModal(title = 'กำลังเชื่อมต่อและโหลดข้อมูลสด...', subtitle = 'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>') {
+    let overlay = document.getElementById('cloud-loading-modal-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'cloud-loading-modal-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      `;
+      document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `
+      <div style="
+        background: #ffffff;
+        border-radius: 24px;
+        padding: 2.5rem 2rem 2.25rem;
+        width: 90%;
+        max-width: 440px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        text-align: center;
+        transform: scale(0.92);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        font-family: var(--font-primary, 'Prompt', sans-serif);
+      ">
+        <div style="
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1.5rem;
+          box-shadow: 0 12px 25px rgba(37, 99, 235, 0.35);
+          animation: pulseCloud 2s infinite ease-in-out;
+        ">
+          <i class="fa-solid fa-cloud-arrow-down" style="font-size: 2.5rem; color: #ffffff;"></i>
+        </div>
+
+        <h3 id="loading-modal-title" style="
+          font-size: 1.35rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 0.6rem;
+          line-height: 1.3;
+        ">${title}</h3>
+
+        <p id="loading-modal-subtitle" style="
+          font-size: 0.92rem;
+          color: #64748b;
+          margin-bottom: 1.75rem;
+          line-height: 1.55;
+        ">${subtitle}</p>
+
+        <div style="
+          width: 100%;
+          height: 8px;
+          background: #e2e8f0;
+          border-radius: 10px;
+          overflow: hidden;
+          position: relative;
+        ">
+          <div id="cloud-loading-progress-bar" style="
+            width: 25%;
+            height: 100%;
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            border-radius: 10px;
+            transition: width 0.4s ease;
+          "></div>
+        </div>
+      </div>
+      <style>
+        @keyframes pulseCloud {
+          0%, 100% { transform: scale(1); box-shadow: 0 12px 25px rgba(37, 99, 235, 0.35); }
+          50% { transform: scale(1.06); box-shadow: 0 16px 30px rgba(37, 99, 235, 0.5); }
+        }
+      </style>
+    `;
+
+    overlay.style.display = 'flex';
+    requestAnimationFrame(() => {
+      overlay.style.opacity = '1';
+      const card = overlay.firstElementChild;
+      if (card) card.style.transform = 'scale(1)';
+    });
+  },
+
+  updateLoadingModalProgress(percent, title, subtitle) {
+    const bar = document.getElementById('cloud-loading-progress-bar');
+    if (bar) bar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    
+    if (title) {
+      const titleEl = document.getElementById('loading-modal-title');
+      if (titleEl) titleEl.innerHTML = title;
+    }
+    if (subtitle) {
+      const subEl = document.getElementById('loading-modal-subtitle');
+      if (subEl) subEl.innerHTML = subtitle;
+    }
+  },
+
+  hideLoadingModal() {
+    const overlay = document.getElementById('cloud-loading-modal-overlay');
+    if (overlay) {
+      overlay.style.opacity = '0';
+      const card = overlay.firstElementChild;
+      if (card) card.style.transform = 'scale(0.92)';
+      setTimeout(() => {
+        overlay.style.display = 'none';
+      }, 300);
+    }
+  },
+
   // Confirmation Dialog
   confirmDialog(title, message, onConfirm) {
     this.openModal(

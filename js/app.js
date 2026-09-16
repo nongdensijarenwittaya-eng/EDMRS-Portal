@@ -139,11 +139,23 @@ function initAppShell() {
   if (fetchSheetsBtn) {
     fetchSheetsBtn.onclick = async () => {
       try {
-        window.utils.showToast('กำลังเชื่อมต่อดึงข้อมูลทั้งหมดจาก Google Sheets...', 'info');
+        if (window.utils && window.utils.showLoadingModal) {
+          window.utils.showLoadingModal(
+            'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
+            'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>'
+          );
+          if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(40);
+        }
         const counts = await window.db.syncFromGoogleSheets();
-        window.utils.showToast(`ดึงฐานข้อมูลจริงจาก Google Sheets สำเร็จ! (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร, ${counts.bookCount} เล่ม)`, 'success', 5000);
-        if (window.router) window.router.handleRoute();
+        if (window.utils && window.utils.updateLoadingModalProgress) {
+          window.utils.updateLoadingModalProgress(100, 'ดึงข้อมูลสำเร็จ!', `โหลดนักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ, เล่ม ${counts.bookCount} เล่ม`);
+        }
+        setTimeout(() => {
+          if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
+          if (window.router) window.router.handleRoute();
+        }, 500);
       } catch (err) {
+        if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
         window.utils.showToast(`ไม่สามารถดึงข้อมูลได้: ${err.message}`, 'danger', 5000);
       }
     };
@@ -211,7 +223,7 @@ function updateLiveClock() {
 
 function autoFetchFromGoogleSheets() {
   const settings = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
-  const sheetsUrl = settings.sheets_url;
+  const sheetsUrl = settings.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
   
   if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
     const isStudentsEmpty = (!window.db.data.students || window.db.data.students.length === 0);

@@ -95,9 +95,31 @@ const loginView = {
 
         const result = await window.authSystem.login(username, password, rememberMe);
         if (result.success) {
-          window.utils.showToast(`ยินดีต้อนรับ ${result.user.first_name} เข้าสู่ระบบ`, 'success');
-          window.location.hash = '#dashboard';
-          window.location.reload();
+          if (window.utils && window.utils.showLoadingModal) {
+            window.utils.showLoadingModal(
+              'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
+              'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>'
+            );
+
+            try {
+              const sheetsUrl = (window.db && window.db.data && window.db.data.settings && window.db.data.settings.sheets_url) || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
+              if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(45);
+              await window.db.syncFromGoogleSheets(sheetsUrl);
+              if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(100, 'โหลดข้อมูลจาก Google Sheets สำเร็จ!', 'กำลังนำท่านเข้าสู่แดชบอร์ด...');
+            } catch (syncErr) {
+              console.warn('Sync on login warning:', syncErr);
+              if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(100, 'เข้าสู่ระบบสำเร็จ', 'กำลังนำท่านเข้าสู่ระบบ...');
+            }
+
+            setTimeout(() => {
+              if (window.utils.hideLoadingModal) window.utils.hideLoadingModal();
+              window.location.hash = '#dashboard';
+              window.location.reload();
+            }, 600);
+          } else {
+            window.location.hash = '#dashboard';
+            window.location.reload();
+          }
         } else {
           alertContainer.innerHTML = `
             <div class="toast toast-danger" style="margin-bottom: 1rem; width: 100%;">
