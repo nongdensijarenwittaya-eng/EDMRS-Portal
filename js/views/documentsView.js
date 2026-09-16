@@ -401,7 +401,7 @@ const documentsView = {
         {
           text: isEdit ? '<i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข' : '<i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลและไฟล์สแกน',
           class: 'btn btn-primary',
-          onClick: () => {
+          onClick: async () => {
             const stdIdEl = document.getElementById('modal-doc-student-id');
             const stdNameEl = document.getElementById('modal-doc-student-name');
             const studentId = stdIdEl ? stdIdEl.value.trim() : '';
@@ -429,8 +429,18 @@ const documentsView = {
               fileUrl = driveUrlVal;
               const driveId = window.utils.getDriveFileId(driveUrlVal);
               fileName = `GoogleDrive_${gradYear}_${driveId ? driveId.slice(0, 6) : docNum}.pdf`;
-            } else if (fileInput.files && fileInput.files[0]) {
-              fileName = fileInput.files[0].name;
+            } else if (fileInput && fileInput.files && fileInput.files[0]) {
+              const fileObj = fileInput.files[0];
+              fileName = fileObj.name;
+              window.utils.showToast('กำลังอัปโหลดไฟล์สแกนลง Google Drive...', 'info');
+              const bookCode = `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`;
+              const driveUrl = await window.db.uploadScanFileToDrive(fileObj, fileName, bookCode);
+              if (driveUrl) {
+                fileUrl = driveUrl;
+                window.utils.showToast('อัปโหลดไฟล์ลง Google Drive และแปลงลิงก์สำเร็จ!', 'success');
+              } else {
+                fileUrl = URL.createObjectURL(fileObj);
+              }
             }
 
             if (isEdit) {
