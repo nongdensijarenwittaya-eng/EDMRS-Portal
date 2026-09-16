@@ -237,9 +237,7 @@ const documentsView = {
           'ยืนยันการลบเอกสาร',
           `คุณต้องการลบเอกสารรหัส <b>${code}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.data.documents = window.db.data.documents.filter(d => d.id != id);
-            window.db.addAuditLog('ทะเบียนเอกสาร', 'ลบเอกสาร', `ลบเอกสารรหัส ${code}`);
-            window.db.save(false);
+            window.db.deleteDocument(code, id);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
               await window.db.syncToGoogleSheets();

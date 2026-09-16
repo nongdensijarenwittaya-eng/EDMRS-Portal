@@ -212,9 +212,7 @@ const studentDetailView = {
             'ยืนยันการลบนักเรียน',
             `คุณต้องการลบข้อมูลนักเรียน <b>${student.prefix}${student.first_name} ${student.last_name} (${student.student_id})</b> ใช่หรือไม่?`,
             () => {
-              window.db.data.students = window.db.data.students.filter(s => s.student_id !== student.student_id);
-              window.db.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูล', `ลบข้อมูลนักเรียน ${student.first_name} ${student.last_name}`);
-              window.db.save();
+              window.db.deleteStudent(student.student_id);
               window.utils.showToast('ลบข้อมูลนักเรียนเรียบร้อยแล้ว', 'success');
               window.location.hash = '#students';
             }
@@ -241,9 +239,7 @@ const studentDetailView = {
           'ยืนยันการลบเอกสาร',
           `คุณต้องการลบเอกสารรหัส <b>${code}</b> ใช่หรือไม่?`,
           () => {
-            window.db.data.documents = window.db.data.documents.filter(d => d.id != id);
-            window.db.addAuditLog('ทะเบียนเอกสาร', 'ลบเอกสาร', `ลบเอกสารรหัส ${code}`);
-            window.db.save();
+            window.db.deleteDocument(code, id);
             window.utils.showToast('ลบเอกสารเรียบร้อยแล้ว', 'success');
             window.location.reload();
           }

@@ -260,33 +260,43 @@ function saveFileToDriveAlbum(bookCode, fileName, base64Data, fileType) {
 function syncStudentsSheet(students) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Students") || ss.insertSheet("Students");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สำเนาปพ. ด้านหน้า", "สำเนาปพ. ด้านหลัง", "สถานะ"]);
+  var rows = [];
+  rows.push(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สำเนาปพ. ด้านหน้า", "สำเนาปพ. ด้านหลัง", "สถานะ"]);
+  
+  var seen = {};
+  if (Array.isArray(students)) {
+    students.forEach(function(s) {
+      var sid = String(s.student_id || "").trim();
+      if (sid && !seen[sid.toLowerCase()]) {
+        seen[sid.toLowerCase()] = true;
+        var driveUrlFront = String(s.file_url || "");
+        var driveUrlBack = String(s.file_url_back || "");
+        var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : driveUrlFront;
+        var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : driveUrlBack;
+
+        rows.push([
+          sid,
+          String(s.prefix || ""),
+          String(s.first_name || ""),
+          String(s.last_name || ""),
+          String(s.previous_name || ""),
+          String(s.grade_level || ""),
+          String(s.academic_year || ""),
+          String(s.doc_number || ""),
+          String(s.set_number || s.book_number || ""),
+          hyperlinkFront,
+          hyperlinkBack,
+          String(s.status || "ปกติ")
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 12).setValues(rows);
   sheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  students.forEach(function(s) {
-    var driveUrlFront = s.file_url || "";
-    var driveUrlBack = s.file_url_back || "";
-    var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : (driveUrlFront || "");
-    var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : (driveUrlBack || "");
-
-    sheet.appendRow([
-      s.student_id,
-      s.prefix || "",
-      s.first_name || "",
-      s.last_name || "",
-      s.previous_name || "",
-      s.grade_level || "",
-      s.academic_year || "",
-      s.doc_number || "",
-      s.set_number || s.book_number || "",
-      hyperlinkFront,
-      hyperlinkBack,
-      s.status || "ปกติ"
-    ]);
-  });
 }
 
 /**
@@ -295,31 +305,44 @@ function syncStudentsSheet(students) {
 function syncDocumentsSheet(documents) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Documents") || ss.insertSheet("Documents");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+  var rows = [];
+  rows.push(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+  
+  var seen = {};
+  if (Array.isArray(documents)) {
+    documents.forEach(function(d) {
+      var dcode = String(d.doc_code || "").trim();
+      if (!dcode && d.doc_number) {
+        dcode = "DOC-" + (d.doc_type_code || "ปพ.1").replace('.', '') + "-" + (d.academic_year || "2565") + "-" + (d.book_number || "01") + "-" + d.doc_number;
+      }
+      if (dcode && !seen[dcode.toLowerCase()]) {
+        seen[dcode.toLowerCase()] = true;
+        var driveUrlFront = String(d.file_url || "");
+        var driveUrlBack = String(d.file_url_back || "");
+        var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : driveUrlFront;
+        var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : driveUrlBack;
+
+        rows.push([
+          dcode,
+          String(d.doc_type_code || ""),
+          String(d.academic_year || ""),
+          String(d.book_number || ""),
+          String(d.doc_number || ""),
+          String(d.status || ""),
+          String(d.location_code || ""),
+          String(d.file_name || ""),
+          hyperlinkFront,
+          hyperlinkBack
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
   sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  documents.forEach(function(d) {
-    var driveUrlFront = d.file_url || "";
-    var driveUrlBack = d.file_url_back || "";
-    var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : (driveUrlFront || "");
-    var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : (driveUrlBack || "");
-
-    sheet.appendRow([
-      d.doc_code || "",
-      d.doc_type_code || "",
-      d.academic_year || "",
-      d.book_number || "",
-      d.doc_number || "",
-      d.status || "",
-      d.location_code || "",
-      d.file_name || "",
-      hyperlinkFront,
-      hyperlinkBack
-    ]);
-  });
 }
 
 /**
@@ -328,25 +351,35 @@ function syncDocumentsSheet(documents) {
 function syncBooksSheet(books) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Books") || ss.insertSheet("Books");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Google Drive Album Path"]);
+  var rows = [];
+  rows.push(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Google Drive Album Path"]);
+  
+  var seen = {};
+  if (Array.isArray(books)) {
+    books.forEach(function(b) {
+      var bcode = String(b.book_code || "").trim();
+      if (bcode && !seen[bcode.toLowerCase()]) {
+        seen[bcode.toLowerCase()] = true;
+        rows.push([
+          bcode,
+          String(b.doc_type_code || ""),
+          String(b.academic_year || ""),
+          String(b.book_number || ""),
+          String(b.start_no || ""),
+          String(b.end_no || ""),
+          Number(b.item_count || 0),
+          String(b.location_code || ""),
+          "EDMRS_Drive_Vault/" + bcode + "/"
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
   sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  books.forEach(function(b) {
-    sheet.appendRow([
-      b.book_code,
-      b.doc_type_code,
-      b.academic_year,
-      b.book_number,
-      b.start_no,
-      b.end_no,
-      b.item_count,
-      b.location_code,
-      "EDMRS_Drive_Vault/" + b.book_code + "/"
-    ]);
-  });
 }
 
 /**
@@ -355,26 +388,36 @@ function syncBooksSheet(books) {
 function syncLoansSheet(loans) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Loans") || ss.insertSheet("Loans");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ"]);
+  var rows = [];
+  rows.push(["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ"]);
+  
+  var seen = {};
+  if (Array.isArray(loans)) {
+    loans.forEach(function(l) {
+      var lcode = String(l.loan_code || "").trim();
+      if (lcode && !seen[lcode.toLowerCase()]) {
+        seen[lcode.toLowerCase()] = true;
+        rows.push([
+          lcode.replace('LN-', 'REQ-'),
+          String(l.student_id || ""),
+          String(l.student_name || ""),
+          String(l.doc_type_code || "ปพ.1"),
+          String(l.borrower_name || ""),
+          String(l.borrower_dept || ""),
+          String(l.loan_date || ""),
+          String(l.return_due_date || ""),
+          String(l.reason || ""),
+          (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา'
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
   sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#f59e0b").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  loans.forEach(function(l) {
-    sheet.appendRow([
-      l.loan_code ? l.loan_code.replace('LN-', 'REQ-') : "",
-      l.student_id || "",
-      l.student_name || "",
-      l.doc_type_code || "ปพ.1",
-      l.borrower_name || "",
-      l.borrower_dept || "",
-      l.loan_date || "",
-      l.return_due_date || "",
-      l.reason || "",
-      (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา'
-    ]);
-  });
 }
 
 /**
@@ -383,23 +426,33 @@ function syncLoansSheet(loans) {
 function syncStorageLocationsSheet(locations) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Storage_Locations") || ss.insertSheet("Storage_Locations");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย"]);
+  var rows = [];
+  rows.push(["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย"]);
+  
+  var seen = {};
+  if (Array.isArray(locations)) {
+    locations.forEach(function(l) {
+      var code = String(l.code || "").trim();
+      if (code && !seen[code.toLowerCase()]) {
+        seen[code.toLowerCase()] = true;
+        rows.push([
+          code,
+          String(l.building || ""),
+          String(l.room || ""),
+          String(l.cabinet || ""),
+          String(l.shelf || ""),
+          String(l.folder || ""),
+          String(l.description || "")
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 7).setValues(rows);
   sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#64748b").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  locations.forEach(function(l) {
-    sheet.appendRow([
-      l.code || "",
-      l.building || "",
-      l.room || "",
-      l.cabinet || "",
-      l.shelf || "",
-      l.folder || "",
-      l.description || ""
-    ]);
-  });
 }
 
 /**
@@ -408,23 +461,33 @@ function syncStorageLocationsSheet(locations) {
 function syncUsersSheet(users) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Users") || ss.insertSheet("Users");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง"]);
+  var rows = [];
+  rows.push(["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง"]);
+  
+  var seen = {};
+  if (Array.isArray(users)) {
+    users.forEach(function(u) {
+      var uname = String(u.username || "").trim();
+      if (uname && !seen[uname.toLowerCase()]) {
+        seen[uname.toLowerCase()] = true;
+        rows.push([
+          uname,
+          String(u.title || ""),
+          String(u.first_name || ""),
+          String(u.last_name || ""),
+          String(u.role_code || "staff"),
+          String(u.email || ""),
+          String(u.created_at || "")
+        ]);
+      }
+    });
+  }
+  
+  sheet.getRange(1, 1, rows.length, 7).setValues(rows);
   sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#ef4444").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
-
-  users.forEach(function(u) {
-    sheet.appendRow([
-      u.username || "",
-      u.title || "",
-      u.first_name || "",
-      u.last_name || "",
-      u.role_code || "",
-      u.email || "",
-      u.created_at || ""
-    ]);
-  });
 }
 
 /**
@@ -433,22 +496,25 @@ function syncUsersSheet(users) {
 function syncSettingsSheet(settings) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName("Settings") || ss.insertSheet("Settings");
-  sheet.clear();
+  sheet.clearContents();
   
-  sheet.appendRow(["Setting Key", "Value", "Description"]);
-  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#0f766e").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
-
+  var rows = [];
+  rows.push(["Setting Key", "Value", "Description"]);
+  
   if (settings && typeof settings === "object") {
     var keys = Object.keys(settings);
     keys.forEach(function(key) {
-      sheet.appendRow([
+      rows.push([
         key,
         String(settings[key] || ""),
         "ตั้งค่าระบบ EDMRS"
       ]);
     });
   }
+  
+  sheet.getRange(1, 1, rows.length, 3).setValues(rows);
+  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#0f766e").setFontColor("#ffffff");
+  sheet.setFrozenRows(1);
 }
 
 /**

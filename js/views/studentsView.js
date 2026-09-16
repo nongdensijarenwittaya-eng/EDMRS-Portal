@@ -280,9 +280,7 @@ const studentsView = {
           'ยืนยันการลบนักเรียน',
           `คุณต้องการลบข้อมูลนักเรียน <b>${name} (${id})</b> หรือไม่? การลบนี้จะส่งผลต่อประวัติเอกสาร`,
           async () => {
-            window.db.data.students = window.db.data.students.filter(s => s.student_id !== id);
-            window.db.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูล', `ลบข้อมูลนักเรียน ${name} (${id})`);
-            window.db.save(false);
+            window.db.deleteStudent(id);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
               await window.db.syncToGoogleSheets();

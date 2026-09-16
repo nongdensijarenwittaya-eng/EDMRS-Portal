@@ -126,9 +126,7 @@ const locationsView = {
           'ยืนยันการลบตำแหน่งจัดเก็บ',
           `คุณต้องการลบตำแหน่งจัดเก็บ <b>${code}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.data.storage_locations = window.db.data.storage_locations.filter(l => l.code !== code);
-            window.db.addAuditLog('สถานที่จัดเก็บ', 'ลบตำแหน่ง', `ลบตำแหน่งจัดเก็บ ${code}`);
-            window.db.save(false);
+            window.db.deleteLocation(code);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
               await window.db.syncToGoogleSheets();

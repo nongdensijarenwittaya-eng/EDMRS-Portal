@@ -277,9 +277,7 @@ const loansView = {
           'ยืนยันการลบรายการคำขอ',
           `คุณต้องการลบประวัติคำขอสำเนา <b>${displayCode}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.data.loans = window.db.data.loans.filter(l => l.id != id);
-            window.db.addAuditLog('คำขอสำเนาเอกสาร', 'ลบคำขอ', `ลบคำขอสำเนา ${displayCode}`);
-            window.db.save(false);
+            window.db.deleteLoan(code, id);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
               await window.db.syncToGoogleSheets();

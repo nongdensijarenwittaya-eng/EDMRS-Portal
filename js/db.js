@@ -21,7 +21,15 @@ class RelationalDatabase {
       audit_logs: [],
       academic_years: [],
       settings: {},
-      notifications: []
+      notifications: [],
+      deleted_keys: {
+        users: [],
+        students: [],
+        documents: [],
+        books: [],
+        loans: [],
+        storage_locations: []
+      }
     };
     this.init();
   }
@@ -44,6 +52,9 @@ class RelationalDatabase {
         if (!this.data.documents) this.data.documents = [];
         if (!this.data.books) this.data.books = [];
         if (!this.data.loans) this.data.loans = [];
+        if (!this.data.deleted_keys) {
+          this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+        }
 
         if (Array.isArray(this.data.students) && this.data.students.some(s => s.student_id === '65001234')) {
           this.data.books = [];
@@ -56,19 +67,30 @@ class RelationalDatabase {
           this.data.storage_locations = [];
         }
 
-        // Automatic deduplication sweep for users
-        if (Array.isArray(this.data.users) && this.data.users.length > 0) {
-          const uniqueUsers = [];
+        // Automatic deduplication & deleted filter sweep across all entities
+        const keyPropMap = {
+          users: 'username',
+          students: 'student_id',
+          documents: 'doc_code',
+          books: 'book_code',
+          loans: 'loan_code',
+          storage_locations: 'code'
+        };
+        ['users', 'students', 'documents', 'books', 'loans', 'storage_locations'].forEach(entity => {
+          if (!Array.isArray(this.data[entity])) this.data[entity] = [];
+          const deletedList = (this.data.deleted_keys[entity] || []).map(k => String(k).toLowerCase());
+          const keyProp = keyPropMap[entity];
+          const uniqueItems = [];
           const seen = new Set();
-          this.data.users.forEach(u => {
-            const uname = String(u.username || '').trim();
-            if (uname && !seen.has(uname)) {
-              seen.add(uname);
-              uniqueUsers.push(u);
+          this.data[entity].forEach(item => {
+            const keyVal = String(item[keyProp] || item.id || '').trim().toLowerCase();
+            if (keyVal && !seen.has(keyVal) && !deletedList.includes(keyVal)) {
+              seen.add(keyVal);
+              uniqueItems.push(item);
             }
           });
-          this.data.users = uniqueUsers;
-        }
+          this.data[entity] = uniqueItems;
+        });
 
         if (!this.data.audit_logs || this.data.audit_logs.length === 0) this.seedAuditLogs();
         if (!this.data.settings) this.seedSettings();
@@ -325,6 +347,79 @@ class RelationalDatabase {
     ];
   }
 
+  trackDeletedKey(entity, key) {
+    if (!this.data.deleted_keys) {
+      this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+    }
+    if (!this.data.deleted_keys[entity]) {
+      this.data.deleted_keys[entity] = [];
+    }
+    const cleanKey = String(key || '').trim().toLowerCase();
+    if (cleanKey && !this.data.deleted_keys[entity].map(k => String(k).toLowerCase()).includes(cleanKey)) {
+      this.data.deleted_keys[entity].push(cleanKey);
+    }
+  }
+
+  deleteUser(username) {
+    const target = String(username || '').trim();
+    if (!target) return;
+    this.trackDeletedKey('users', target);
+    this.data.users = (this.data.users || []).filter(u => String(u.username || '').trim().toLowerCase() !== target.toLowerCase());
+    this.addAuditLog('ผู้ใช้งาน', 'ลบผู้ใช้', `ลบบัญชีผู้ใช้ ${target}`);
+    this.save(true);
+  }
+
+  deleteStudent(studentId) {
+    const target = String(studentId || '').trim();
+    if (!target) return;
+    this.trackDeletedKey('students', target);
+    this.data.students = (this.data.students || []).filter(s => String(s.student_id || '').trim().toLowerCase() !== target.toLowerCase());
+    this.addAuditLog('ข้อมูลนักเรียน', 'ลบนักเรียน', `ลบข้อมูลนักเรียน ${target}`);
+    this.save(true);
+  }
+
+  deleteDocument(docCode, docId) {
+    const targetCode = String(docCode || '').trim();
+    if (targetCode) this.trackDeletedKey('documents', targetCode);
+    this.data.documents = (this.data.documents || []).filter(d => {
+      if (docId && d.id == docId) return false;
+      if (targetCode && String(d.doc_code || '').trim().toLowerCase() === targetCode.toLowerCase()) return false;
+      return true;
+    });
+    this.addAuditLog('ทะเบียนเอกสาร', 'ลบเอกสาร', `ลบเอกสารรหัส ${targetCode || docId}`);
+    this.save(true);
+  }
+
+  deleteBook(bookCode) {
+    const target = String(bookCode || '').trim();
+    if (!target) return;
+    this.trackDeletedKey('books', target);
+    this.data.books = (this.data.books || []).filter(b => String(b.book_code || '').trim().toLowerCase() !== target.toLowerCase());
+    this.addAuditLog('ทะเบียนเล่ม', 'ลบเล่ม', `ลบทะเบียนเล่ม ${target}`);
+    this.save(true);
+  }
+
+  deleteLoan(loanCode, loanId) {
+    const targetCode = String(loanCode || '').trim();
+    if (targetCode) this.trackDeletedKey('loans', targetCode);
+    this.data.loans = (this.data.loans || []).filter(l => {
+      if (loanId && l.id == loanId) return false;
+      if (targetCode && String(l.loan_code || '').trim().toLowerCase() === targetCode.toLowerCase()) return false;
+      return true;
+    });
+    this.addAuditLog('คำขอสำเนา', 'ลบคำขอ', `ลบรายการคำขอ ${targetCode || loanId}`);
+    this.save(true);
+  }
+
+  deleteLocation(code) {
+    const target = String(code || '').trim();
+    if (!target) return;
+    this.trackDeletedKey('storage_locations', target);
+    this.data.storage_locations = (this.data.storage_locations || []).filter(l => String(l.code || '').trim().toLowerCase() !== target.toLowerCase());
+    this.addAuditLog('สถานที่จัดเก็บ', 'ลบสถานที่', `ลบสถานที่จัดเก็บ ${target}`);
+    this.save(true);
+  }
+
   /* Query Helper Methods */
   getStudents(filter = {}) {
     let result = [...(this.data.students || [])];
@@ -476,6 +571,17 @@ class RelationalDatabase {
     let studentCount = 0, docCount = 0, bookCount = 0, loanCount = 0, locCount = 0;
     this.data.is_mock_cleared = true;
 
+    if (!this.data.deleted_keys) {
+      this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+    }
+
+    const deletedUsers = (this.data.deleted_keys.users || []).map(k => String(k).toLowerCase());
+    const deletedStudents = (this.data.deleted_keys.students || []).map(k => String(k).toLowerCase());
+    const deletedDocs = (this.data.deleted_keys.documents || []).map(k => String(k).toLowerCase());
+    const deletedBooks = (this.data.deleted_keys.books || []).map(k => String(k).toLowerCase());
+    const deletedLoans = (this.data.deleted_keys.loans || []).map(k => String(k).toLowerCase());
+    const deletedLocs = (this.data.deleted_keys.storage_locations || []).map(k => String(k).toLowerCase());
+
     const extractUrl = (rawStr) => {
       if (!rawStr) return '';
       const str = String(rawStr).trim();
@@ -505,8 +611,18 @@ class RelationalDatabase {
         status: String(row[11] || 'graduated').trim()
       })).filter(s => s.student_id);
 
-      this.data.students = parsedStudents;
-      studentCount = parsedStudents.length;
+      const uniqueStudents = [];
+      const seenStudentIds = new Set();
+      parsedStudents.forEach(s => {
+        const sid = String(s.student_id).toLowerCase();
+        if (!seenStudentIds.has(sid) && !deletedStudents.includes(sid)) {
+          seenStudentIds.add(sid);
+          uniqueStudents.push(s);
+        }
+      });
+
+      this.data.students = uniqueStudents;
+      studentCount = uniqueStudents.length;
     } else {
       this.data.students = [];
     }
@@ -564,8 +680,20 @@ class RelationalDatabase {
         };
       }).filter(d => d.doc_code || d.doc_number || d.student_id);
 
-      this.data.documents = parsedDocs;
-      docCount = parsedDocs.length;
+      const uniqueDocs = [];
+      const seenDocCodes = new Set();
+      parsedDocs.forEach(d => {
+        const dcode = String(d.doc_code).toLowerCase();
+        if (!seenDocCodes.has(dcode) && !deletedDocs.includes(dcode)) {
+          seenDocCodes.add(dcode);
+          uniqueDocs.push(d);
+        }
+      });
+
+      this.data.documents = uniqueDocs;
+      docCount = uniqueDocs.length;
+    } else {
+      this.data.documents = [];
     }
 
     // 3. Books
@@ -592,8 +720,20 @@ class RelationalDatabase {
         };
       }).filter(b => b.book_code);
 
-      this.data.books = parsedBooks;
-      bookCount = parsedBooks.length;
+      const uniqueBooks = [];
+      const seenBookCodes = new Set();
+      parsedBooks.forEach(b => {
+        const bcode = String(b.book_code).toLowerCase();
+        if (!seenBookCodes.has(bcode) && !deletedBooks.includes(bcode)) {
+          seenBookCodes.add(bcode);
+          uniqueBooks.push(b);
+        }
+      });
+
+      this.data.books = uniqueBooks;
+      bookCount = uniqueBooks.length;
+    } else {
+      this.data.books = [];
     }
 
     // 4. Loans / Document Copy Requests
@@ -613,8 +753,20 @@ class RelationalDatabase {
         status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
       })).filter(l => l.loan_code);
 
-      this.data.loans = parsedLoans;
-      loanCount = parsedLoans.length;
+      const uniqueLoans = [];
+      const seenLoanCodes = new Set();
+      parsedLoans.forEach(l => {
+        const lcode = String(l.loan_code).toLowerCase();
+        if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
+          seenLoanCodes.add(lcode);
+          uniqueLoans.push(l);
+        }
+      });
+
+      this.data.loans = uniqueLoans;
+      loanCount = uniqueLoans.length;
+    } else {
+      this.data.loans = [];
     }
 
     // 5. Storage Locations
@@ -631,12 +783,18 @@ class RelationalDatabase {
         description: String(row[6] || '').trim()
       })).filter(l => l.code);
 
-      if (parsedLocs.length > 0) {
-        this.data.storage_locations = parsedLocs;
-        locCount = parsedLocs.length;
-      } else {
-        this.data.storage_locations = [];
-      }
+      const uniqueLocs = [];
+      const seenLocCodes = new Set();
+      parsedLocs.forEach(l => {
+        const lcode = String(l.code).toLowerCase();
+        if (!seenLocCodes.has(lcode) && !deletedLocs.includes(lcode)) {
+          seenLocCodes.add(lcode);
+          uniqueLocs.push(l);
+        }
+      });
+
+      this.data.storage_locations = uniqueLocs;
+      locCount = uniqueLocs.length;
     } else {
       this.data.storage_locations = [];
     }
@@ -661,8 +819,9 @@ class RelationalDatabase {
       const uniqueUsers = [];
       const seenUsernames = new Set();
       parsedUsers.forEach(u => {
-        if (!seenUsernames.has(u.username)) {
-          seenUsernames.add(u.username);
+        const uname = String(u.username).toLowerCase();
+        if (!seenUsernames.has(uname) && !deletedUsers.includes(uname)) {
+          seenUsernames.add(uname);
           uniqueUsers.push(u);
         }
       });

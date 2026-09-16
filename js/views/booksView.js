@@ -396,12 +396,10 @@ const booksView = {
                 'ยืนยันการลบรายการในเล่ม',
                 `คุณต้องการลบรายการเอกสาร <b>${docCode}</b> (${stdName || stdId}) ออกจากทะเบียนเล่มใช่หรือไม่?`,
                 () => {
-                  window.db.data.documents = window.db.data.documents.filter(d => d.id != docId);
+                  window.db.deleteDocument(docCode, docId);
                   if (stdId) {
-                    window.db.data.students = window.db.data.students.filter(s => s.student_id !== stdId);
+                    window.db.deleteStudent(stdId);
                   }
-                  window.db.addAuditLog('ทะเบียนเล่ม', 'ลบรายการในเล่ม', `ลบเอกสาร ${docCode} นักเรียน ${stdName || stdId} ออกจากเล่ม ${bookCode}`);
-                  window.db.save();
                   window.utils.showToast('ลบรายการเอกสารและข้อมูลนักเรียนเรียบร้อยแล้ว', 'success');
                   window.utils.closeModal();
                   if (window.booksView && window.booksView.refreshPage) window.booksView.refreshPage();
@@ -429,9 +427,7 @@ const booksView = {
           'ยืนยันการลบเล่มเอกสาร',
           `คุณต้องการลบทะเบียนเล่ม <b>${code}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.data.books = window.db.data.books.filter(b => b.book_code !== code);
-            window.db.addAuditLog('ทะเบียนเล่ม', 'ลบเล่ม', `ลบทะเบียนเล่ม ${code}`);
-            window.db.save(false);
+            window.db.deleteBook(code);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
               await window.db.syncToGoogleSheets();
