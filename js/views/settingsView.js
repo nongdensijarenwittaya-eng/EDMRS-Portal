@@ -204,12 +204,12 @@ const settingsView = {
           email: document.getElementById('setting-email').value.trim(),
           logo_url: logoUrlVal
         };
-        window.db.addAuditLog('ตั้งค่าระบบ', 'แก้ไขตั้งค่าสถานศึกษา', 'อัปเดตชื่อสถานศึกษา โลโก้ และข้อมูลการติดต่อ');
-        window.db.save();
+        window.db.addAuditLog('ตั้งค่าระบบ', 'แก้ไขตั้งค่าสถานศึกษา', 'อัปเดตชื่อสถานศึกษา โลโก้ และข้อมูลการติดต่อ (บันทึกลง Google Sheets)');
+        window.db.save(true);
         if (window.utils && window.utils.showToast) {
-          window.utils.showToast('บันทึกการตั้งค่าระบบและโลโก้เรียบร้อยแล้ว', 'success');
+          window.utils.showToast('บันทึกการตั้งค่าระบบและซิงก์ลง Google Sheets เรียบร้อยแล้ว', 'success');
         }
-        setTimeout(() => window.location.reload(), 500);
+        setTimeout(() => window.location.reload(), 600);
       };
     }
 
@@ -523,9 +523,9 @@ function getAllSheetData() {
         window.db.data.settings.sheets_url = sheetsUrl;
         window.db.data.settings.drive_folder = driveFolder;
         window.db.addAuditLog('ตั้งค่าระบบ', 'แก้ไขตั้งค่า Cloud', 'อัปเดตการตั้งค่า Google Drive & Google Sheets');
-        window.db.save();
+        window.db.save(true);
         if (window.utils && window.utils.showToast) {
-          window.utils.showToast('บันทึกการตั้งค่า Google Drive & Google Sheets เรียบร้อยแล้ว', 'success');
+          window.utils.showToast('บันทึกการตั้งค่า Google Drive & Google Sheets และซิงก์เรียบร้อยแล้ว', 'success');
         }
       };
     }

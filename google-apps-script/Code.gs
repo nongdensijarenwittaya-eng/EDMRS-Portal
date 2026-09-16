@@ -88,6 +88,14 @@ function initSheetsStructure() {
     usersSheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#ef4444").setFontColor("#ffffff");
     usersSheet.setFrozenRows(1);
   }
+
+  // 7. Tab: Settings (ตั้งค่าระบบ - 3 คอลัมน์)
+  var settingsSheet = ss.getSheetByName("Settings") || ss.insertSheet("Settings");
+  if (settingsSheet.getLastRow() === 0) {
+    settingsSheet.appendRow(["Setting Key", "Value", "Description"]);
+    settingsSheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#0f766e").setFontColor("#ffffff");
+    settingsSheet.setFrozenRows(1);
+  }
 }
 
 /**
@@ -153,7 +161,7 @@ function doPost(e) {
     }
 
     if (action === "sync_database") {
-      // ซิงก์ข้อมูลตารางทั้งหมดลง Google Sheets (ผู้ใช้, นักเรียน, เอกสาร, เล่ม, ยืม-คืน, สถานที่จัดเก็บ)
+      // ซิงก์ข้อมูลตารางทั้งหมดลง Google Sheets (ผู้ใช้, นักเรียน, เอกสาร, เล่ม, ยืม-คืน, สถานที่จัดเก็บ, ตั้งค่าระบบ)
       initSheetsStructure();
       syncUsersSheet(contents.users || []);
       syncStudentsSheet(contents.students || []);
@@ -161,10 +169,11 @@ function doPost(e) {
       syncBooksSheet(contents.books || []);
       syncLoansSheet(contents.loans || []);
       syncStorageLocationsSheet(contents.storage_locations || []);
+      syncSettingsSheet(contents.settings || {});
       
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "Synchronized database (including Users & Storage_Locations) to Google Sheets successfully!"
+        message: "Synchronized database (including Users, Storage_Locations & Settings) to Google Sheets successfully!"
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -416,6 +425,30 @@ function syncUsersSheet(users) {
       u.created_at || ""
     ]);
   });
+}
+
+/**
+ * ฟังก์ชันซิงก์ข้อมูลตั้งค่าระบบลงชีท "Settings"
+ */
+function syncSettingsSheet(settings) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Settings") || ss.insertSheet("Settings");
+  sheet.clear();
+  
+  sheet.appendRow(["Setting Key", "Value", "Description"]);
+  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#0f766e").setFontColor("#ffffff");
+  sheet.setFrozenRows(1);
+
+  if (settings && typeof settings === "object") {
+    var keys = Object.keys(settings);
+    keys.forEach(function(key) {
+      sheet.appendRow([
+        key,
+        String(settings[key] || ""),
+        "ตั้งค่าระบบ EDMRS"
+      ]);
+    });
+  }
 }
 
 /**

@@ -655,6 +655,20 @@ class RelationalDatabase {
       }
     }
 
+    // 7. Settings
+    if (Array.isArray(sheetData.Settings) && sheetData.Settings.length > 1) {
+      const rows = sheetData.Settings.slice(1);
+      const parsedSettings = { ...this.data.settings };
+      rows.forEach(row => {
+        const key = String(row[0] || '').trim();
+        const val = String(row[1] || '').trim();
+        if (key) {
+          parsedSettings[key] = val;
+        }
+      });
+      this.data.settings = parsedSettings;
+    }
+
     this.addAuditLog('Google Sheets', 'ดึงฐานข้อมูลจาก Google Sheets', `ดึงข้อมูลจากชีทสำเร็จ: ${studentCount} นักเรียน, ${docCount} เอกสาร, ${bookCount} เล่ม, ${userCount} ผู้ใช้`);
     this.save(false);
 
@@ -685,7 +699,8 @@ class RelationalDatabase {
       documents: this.data.documents || [],
       books: this.data.books || [],
       loans: this.data.loans || [],
-      storage_locations: this.data.storage_locations || []
+      storage_locations: this.data.storage_locations || [],
+      settings: this.data.settings || {}
     };
 
     let res;
