@@ -49,11 +49,11 @@ function initSheetsStructure() {
     studentsSheet.setFrozenRows(1);
   }
 
-  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 9 คอลัมน์)
+  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 10 คอลัมน์)
   var docsSheet = ss.getSheetByName("Documents") || ss.insertSheet("Documents");
   if (docsSheet.getLastRow() === 0) {
-    docsSheet.appendRow(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive"]);
-    docsSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+    docsSheet.appendRow(["รหัสเอกสาร", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+    docsSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
     docsSheet.setFrozenRows(1);
   }
 

@@ -56,6 +56,20 @@ class RelationalDatabase {
           this.data.storage_locations = [];
         }
 
+        // Automatic deduplication sweep for users
+        if (Array.isArray(this.data.users) && this.data.users.length > 0) {
+          const uniqueUsers = [];
+          const seen = new Set();
+          this.data.users.forEach(u => {
+            const uname = String(u.username || '').trim();
+            if (uname && !seen.has(uname)) {
+              seen.add(uname);
+              uniqueUsers.push(u);
+            }
+          });
+          this.data.users = uniqueUsers;
+        }
+
         if (!this.data.audit_logs || this.data.audit_logs.length === 0) this.seedAuditLogs();
         if (!this.data.settings) this.seedSettings();
         if (!this.data.settings.org_name_th || this.data.settings.org_name_th === 'โรงเรียนสาธิตวิทยาการการศึกษา') {
