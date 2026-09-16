@@ -169,7 +169,7 @@ const usersView = {
           'ยืนยันการลบบัญชีผู้ใช้งาน',
           `คุณต้องการลบบัญชีผู้ใช้งาน <b>${username}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.data.users = window.db.data.users.filter(u => u.id != id);
+            window.db.data.users = window.db.data.users.filter(u => u.id != id && u.username !== username);
             window.db.addAuditLog('ผู้ใช้งาน', 'ลบผู้ใช้', `ลบบัญชีผู้ใช้ ${username}`);
             window.db.save(false);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');

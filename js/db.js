@@ -33,7 +33,7 @@ class RelationalDatabase {
         this.data = JSON.parse(saved);
         // Ensure legacy missing fields get updated defaults if needed
         if (!this.data.roles || this.data.roles.length === 0) this.seedRolesAndPermissions();
-        if (!this.data.users || this.data.users.length === 0) this.seedUsers();
+        if (!this.data.users) this.seedUsers();
         if (!this.data.academic_years || this.data.academic_years.length === 0) this.seedAcademicYears();
         if (!this.data.document_types || this.data.document_types.length === 0) this.seedDocumentTypes();
         if (!this.data.storage_locations) this.seedStorageLocations();
@@ -646,10 +646,18 @@ class RelationalDatabase {
         password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'
       })).filter(u => u.username);
 
-      if (parsedUsers.length > 0) {
-        this.data.users = parsedUsers;
-        userCount = parsedUsers.length;
-      }
+      const uniqueUsers = [];
+      const seenUsernames = new Set();
+      parsedUsers.forEach(u => {
+        if (!seenUsernames.has(u.username)) {
+          seenUsernames.add(u.username);
+          uniqueUsers.push(u);
+        }
+      });
+      this.data.users = uniqueUsers;
+      userCount = uniqueUsers.length;
+    } else if (Array.isArray(sheetData.Users)) {
+      this.data.users = [];
     }
 
     // 7. Settings
@@ -680,6 +688,7 @@ class RelationalDatabase {
     this.data.books = [];
     this.data.loans = [];
     this.data.storage_locations = [];
+    this.data.users = (this.data.users || []).filter(u => u.username === 'admin');
     this.addAuditLog('ระบบ', 'ล้างข้อมูลสาธิต', 'ล้างข้อมูลปลอมทั้งหมดเพื่อรอรับข้อมูลจริงจาก Google Sheets');
     this.save(false);
   }
