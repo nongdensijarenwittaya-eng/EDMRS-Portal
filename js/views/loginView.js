@@ -5,7 +5,7 @@
 const loginView = {
   render() {
     const settings = window.db.data.settings || {};
-    const orgName = settings.org_name_th || 'โรงเรียนสาธิตวิทยาการการศึกษา';
+    const orgName = settings.org_name_th || 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา';
 
     return `
       <div class="login-body">

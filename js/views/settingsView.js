@@ -31,18 +31,18 @@ const settingsView = {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label required">ชื่อหน่วยงาน/สถานศึกษา (ภาษาไทย)</label>
-              <input type="text" id="setting-org-th" class="form-control" value="${s.org_name_th || 'โรงเรียนสาธิตวิทยาการการศึกษา'}" required>
+              <input type="text" id="setting-org-th" class="form-control" value="${s.org_name_th || 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา'}" required>
             </div>
             <div class="form-group">
               <label class="form-label required">Official English Name</label>
-              <input type="text" id="setting-org-en" class="form-control" value="${s.org_name_en || 'Demonstration School of Educational Sciences'}" required>
+              <input type="text" id="setting-org-en" class="form-control" value="${s.org_name_en || 'Nongdoensricharoenwittaya School'}" required>
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">ที่อยู่สถานศึกษา</label>
-              <input type="text" id="setting-address" class="form-control" value="${s.address || '99/9 ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กรุงเทพมหานคร 10900'}">
+              <input type="text" id="setting-address" class="form-control" value="${s.address || 'ตำบลหนองเดิ่น อำเภอบุ่งคล้า จังหวัดบึงกาฬ 38000'}">
             </div>
             <div class="form-group">
               <label class="form-label">เบอร์โทรศัพท์</label>

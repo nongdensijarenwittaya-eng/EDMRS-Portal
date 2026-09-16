@@ -58,6 +58,10 @@ class RelationalDatabase {
 
         if (!this.data.audit_logs || this.data.audit_logs.length === 0) this.seedAuditLogs();
         if (!this.data.settings) this.seedSettings();
+        if (!this.data.settings.org_name_th || this.data.settings.org_name_th === 'โรงเรียนสาธิตวิทยาการการศึกษา') {
+          this.data.settings.org_name_th = 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา';
+          this.data.settings.org_name_en = 'Nongdoensricharoenwittaya School';
+        }
         if (!this.data.settings.logo_url || this.data.settings.logo_url === 'assets/logo.png') {
           this.data.settings.logo_url = 'https://lh3.googleusercontent.com/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU';
         }
@@ -278,11 +282,11 @@ class RelationalDatabase {
 
   seedSettings() {
     this.data.settings = {
-      org_name_th: 'โรงเรียนสาธิตวิทยาการการศึกษา',
-      org_name_en: 'Demonstration School of Educational Sciences',
+      org_name_th: 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา',
+      org_name_en: 'Nongdoensricharoenwittaya School',
       org_code: 'SCH-100203',
       logo_url: 'https://lh3.googleusercontent.com/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU',
-      address: '99/9 ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กรุงเทพมหานคร 10900',
+      address: 'ตำบลหนองเดิ่น อำเภอบุ่งคล้า จังหวัดบึงกาฬ 38000',
       phone: '02-555-1234',
       email: 'info@school.ac.th',
       doc_code_template: 'DOC-[TYPE]-[STUDENT_ID]',

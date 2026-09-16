@@ -95,7 +95,7 @@ const qrScannerView = {
         <div class="label-print-sheet" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
           ${books.slice(0, 4).map(b => `
             <div style="border: 2px solid var(--primary-800); border-radius: 8px; padding: 1rem; background: white; text-align: center; position: relative;">
-              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--primary-900);">โรงเรียนสาธิตวิทยาการการศึกษา</div>
+              <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--primary-900);">${(window.db && window.db.data && window.db.data.settings && window.db.data.settings.org_name_th) || 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา'}</div>
               <strong style="font-size: 1.1rem; color: var(--primary-700); display: block; margin: 4px 0;">${b.book_code}</strong>
               <span style="font-size: 0.8rem; color: var(--text-muted);">ช่วงเลขที่: ${b.start_no} - ${b.end_no} (${b.academic_year})</span>
               <div style="margin: 0.5rem 0; display: flex; justify-content: center;" id="sheet-qr-${b.id}"></div>
