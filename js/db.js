@@ -114,9 +114,7 @@ class RelationalDatabase {
 
   save(autoSyncSheets = true) {
     localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
-    if (autoSyncSheets) {
-      this.triggerAutoSyncToSheets();
-    }
+    this.triggerAutoSyncToSheets();
   }
 
   triggerAutoSyncToSheets() {
