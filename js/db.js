@@ -154,7 +154,7 @@ class RelationalDatabase {
   save(autoSyncSheets = true, source = null, immediate = true) {
     if (source) {
       this.currentSource = source;
-    } else if (this.currentSource !== this.DATA_SOURCE.GOOGLE) {
+    } else {
       this.currentSource = this.DATA_SOURCE.USER;
     }
     this.cleanupDeletedKeys();
@@ -163,7 +163,7 @@ class RelationalDatabase {
     } catch (e) {
       console.warn('Failed to save to localStorage:', e);
     }
-    if (autoSyncSheets && this.currentSource !== this.DATA_SOURCE.GOOGLE) {
+    if (autoSyncSheets) {
       this.triggerAutoSyncToSheets(immediate);
     }
   }
@@ -504,7 +504,59 @@ class RelationalDatabase {
   }
 
   getDocuments(filter = {}) {
-    let result = [...(this.data.documents || [])];
+    // 1. Gather all explicit documents into a map by student_id or doc_code
+    const docMap = new Map();
+    (this.data.documents || []).forEach(d => {
+      const key = d.student_id ? String(d.student_id).trim() : (d.doc_code ? String(d.doc_code).trim() : null);
+      if (key) {
+        docMap.set(key, { ...d });
+      }
+    });
+
+    // 2. Unify with this.data.students to ensure any student created/imported is present as a document entry
+    (this.data.students || []).forEach(s => {
+      const sid = String(s.student_id || '').trim();
+      if (!sid) return;
+
+      const existingDoc = docMap.get(sid);
+      if (existingDoc) {
+        if (!existingDoc.student_name && (s.prefix || s.first_name || s.last_name)) {
+          existingDoc.student_name = `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim();
+        }
+        if (!existingDoc.book_code && s.book_code) existingDoc.book_code = s.book_code;
+        if (!existingDoc.book_number && (s.set_number || s.book_number)) existingDoc.book_number = s.set_number || s.book_number;
+        if (!existingDoc.academic_year && s.academic_year) existingDoc.academic_year = s.academic_year;
+        if (!existingDoc.doc_number && s.doc_number) existingDoc.doc_number = s.doc_number;
+        if (!existingDoc.doc_type_code && s.doc_type_code) existingDoc.doc_type_code = s.doc_type_code;
+      } else {
+        const docTypeCode = s.doc_type_code || 'ปพ.1';
+        const cleanType = String(docTypeCode).replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ');
+        const setNum = s.set_number || s.book_number || '01';
+        const setNumPadded = String(setNum).padStart(2, '0');
+        const year = s.academic_year || '2565';
+        const synthBookCode = s.book_code || `BOOK-${cleanType}-${year}-${setNumPadded}`;
+
+        docMap.set(sid, {
+          id: s.id || `std_${sid}`,
+          doc_code: `DOC-${cleanType.toUpperCase()}-${sid}`,
+          student_id: sid,
+          student_name: `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim(),
+          doc_type_code: docTypeCode,
+          academic_year: year,
+          book_number: setNum,
+          doc_number: s.doc_number || '001',
+          book_code: synthBookCode,
+          status: s.status === 'graduated' ? 'stored' : (s.status || 'stored'),
+          location_code: s.location_code || 'LOC-01-03-01',
+          file_name: s.file_url ? `${sid}.pdf` : '',
+          file_url: s.file_url || '',
+          file_url_back: s.file_url_back || '',
+          updated_at: s.updated_at || new Date().toISOString()
+        });
+      }
+    });
+
+    let result = Array.from(docMap.values());
 
     const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
 
@@ -537,10 +589,39 @@ class RelationalDatabase {
     }
     if (filter.book_code) {
       const targetBookCode = norm(filter.book_code);
+      const targetBookObj = (this.data.books || []).find(b => norm(b.book_code) === targetBookCode);
+
+      let targetYear = targetBookObj ? String(targetBookObj.academic_year).trim() : null;
+      let targetSetNum = targetBookObj ? parseInt(String(targetBookObj.book_number).replace(/\D/g, '')) : null;
+      let targetDocType = targetBookObj ? norm(targetBookObj.doc_type_code) : null;
+
+      if (!targetYear || isNaN(targetSetNum)) {
+        const parts = String(filter.book_code).split('-');
+        if (parts.length >= 4) {
+          if (!targetDocType) targetDocType = norm(parts[1]);
+          if (!targetYear) targetYear = String(parts[2]).trim();
+          if (isNaN(targetSetNum)) targetSetNum = parseInt(String(parts[3]).replace(/\D/g, ''));
+        }
+      }
+
       result = result.filter(d => {
         if (d.book_code && norm(d.book_code) === targetBookCode) return true;
+        if (targetBookObj && d.book_code && norm(d.book_code) === norm(targetBookObj.book_code)) return true;
+
         const synthCode = norm(`BOOK-${d.doc_type_code || 'ปพ.1'}-${d.academic_year || ''}-${d.book_number || '01'}`);
-        return synthCode === targetBookCode;
+        if (synthCode === targetBookCode) return true;
+
+        if (targetYear && targetSetNum !== null && !isNaN(targetSetNum)) {
+          const dYear = String(d.academic_year || '').trim();
+          const dSet = parseInt(String(d.book_number || d.set_number || '').replace(/\D/g, ''));
+          const dType = norm(d.doc_type_code || 'ปพ.1');
+
+          if (dYear === targetYear && dSet === targetSetNum) {
+            if (!targetDocType || dType === targetDocType) return true;
+          }
+        }
+
+        return false;
       });
     }
     return result;

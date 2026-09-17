@@ -27,13 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-fetch on window focus (when returning to browser tab)
   window.addEventListener('focus', () => {
-    autoFetchFromGoogleSheets(true);
+    if (window.db && !window.db.googleSyncDisabled) {
+      autoFetchFromGoogleSheets(true);
+    }
   });
-
-  // Background real-time polling every 15 seconds
-  setInterval(() => {
-    autoFetchFromGoogleSheets(true);
-  }, 15000);
 });
 
 function initAppShell() {
