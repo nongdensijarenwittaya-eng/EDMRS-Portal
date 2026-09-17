@@ -1272,6 +1272,7 @@ applySheetData(sheetData) {
 
           if (json.data) {
             this.applySheetData(json.data);
+            this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
             try {
               localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
             } catch (e) {}

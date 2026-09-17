@@ -268,7 +268,7 @@ function doPost(e) {
   var hasLock = false;
 
   try {
-    hasLock = lock.tryLock(30000);
+    hasLock = lock.tryLock(10000);
     if (!hasLock) {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
