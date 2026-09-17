@@ -203,7 +203,8 @@ function updateLiveClock() {
 }
 
 function autoFetchFromGoogleSheets(silent = false) {
-  const sheetsUrl = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
+  const settings = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
+  const sheetsUrl = settings.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
   
   if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) return;
 

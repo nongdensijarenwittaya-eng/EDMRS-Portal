@@ -4,7 +4,7 @@
    ========================================================================== */
 
 const DB_STORAGE_KEY = 'EDMRS_RELATIONAL_DB_V2.5';
-const SYSTEM_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
+const DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
 
 class RelationalDatabase {
   constructor() {
@@ -64,7 +64,7 @@ class RelationalDatabase {
         if (parsed && typeof parsed === 'object') {
           this.data = { ...this.data, ...parsed };
           if (!this.data.settings) this.data.settings = {};
-          this.data.settings.sheets_url = SYSTEM_SHEETS_URL;
+          if (!this.data.settings.sheets_url) this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
           if (!this.data.users || this.data.users.length === 0) this.seedUsers();
           if (!this.data.students || this.data.students.length === 0) this.seedStudents();
           if (!this.data.documents || this.data.documents.length === 0) this.seedDocuments();
@@ -78,7 +78,7 @@ class RelationalDatabase {
     }
     this.seedDefaultData();
     if (!this.data.settings) this.data.settings = {};
-    this.data.settings.sheets_url = SYSTEM_SHEETS_URL;
+    if (!this.data.settings.sheets_url) this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
   }
 
   isJunkText(str) {
@@ -167,7 +167,7 @@ class RelationalDatabase {
   triggerAutoSyncToSheets() {
     if (this._syncTimeout) clearTimeout(this._syncTimeout);
     this._syncTimeout = setTimeout(() => {
-      const sheetsUrl = SYSTEM_SHEETS_URL;
+      const sheetsUrl = (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
       if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
         console.log('[DB] Save requested');
         this.syncToGoogleSheets().then(res => {
@@ -341,7 +341,7 @@ class RelationalDatabase {
       doc_code_template: 'DOC-[TYPE]-[STUDENT_ID]',
       book_code_template: 'BOOK-[TYPE]-[YEAR]-[NUM]',
       location_code_template: 'LOC-[CABINET]-[SHELF]-[FOLDER]',
-      sheets_url: SYSTEM_SHEETS_URL,
+      sheets_url: DEFAULT_SHEETS_URL,
       drive_folder: '1FvbKtV0uFyPUfZPLLfQQHE45oH8fatTv',
       items_per_page: 15,
       notify_loan_overdue: true,
@@ -561,7 +561,7 @@ class RelationalDatabase {
       this.currentSource = this.DATA_SOURCE.GOOGLE;
 
       try {
-        const sheetsUrl = SYSTEM_SHEETS_URL;
+        const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
     if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
     }
@@ -958,7 +958,7 @@ class RelationalDatabase {
 
   // Push Local Database to Google Sheets
   async syncToGoogleSheets(customUrl) {
-    const sheetsUrl = SYSTEM_SHEETS_URL;
+    const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
     if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
     }

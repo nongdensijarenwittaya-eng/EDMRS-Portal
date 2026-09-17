@@ -80,12 +80,9 @@ const settingsView = {
         <form id="settings-cloud-form">
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label font-weight-bold" style="display: flex; align-items: center; justify-content: space-between;">
-                <span>Google Sheets Webhook URL / Web App URL</span>
-                <span class="badge" style="font-size: 0.75rem; background-color: #0284c7; color: white; padding: 2px 8px; border-radius: 4px; font-weight: 500;"><i class="fa-solid fa-lock"></i> ฝังในระบบแล้ว (System Fixed Endpoint)</span>
-              </label>
-              <input type="text" id="setting-sheets-url" class="form-control" value="https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec" readonly style="background-color: #f1f5f9; cursor: not-allowed; color: #334155; font-weight: 500;">
-              <div class="form-text" style="color: #64748b;"><i class="fa-solid fa-shield-halved"></i> Web App URL สำหรับซิงก์ข้อมูลถูกฝังล็อกไว้ในระบบแบบถาวร ไม่สามารถแก้ไขได้เพื่อป้องกันข้อผิดพลาดในการเชื่อมต่อ</div>
+              <label class="form-label font-weight-bold">Google Sheets Webhook URL / Web App URL</label>
+              <input type="text" id="setting-sheets-url" class="form-control" value="${s.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec'}" placeholder="https://script.google.com/macros/s/.../exec">
+              <div class="form-text" style="color: #64748b;"><i class="fa-solid fa-link"></i> วาง URL สำหรับซิงก์ข้อมูลจาก Google Apps Script (ต้องลงท้ายด้วย <code>/exec</code>)</div>
             </div>
             <div class="form-group">
               <label class="form-label font-weight-bold">Google Drive Root Folder ID (คลังจัดเก็บไฟล์ดิจิทัล)</label>
