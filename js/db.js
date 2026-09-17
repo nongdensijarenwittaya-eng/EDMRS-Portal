@@ -469,31 +469,43 @@ class RelationalDatabase {
 
   getDocuments(filter = {}) {
     let result = [...(this.data.documents || [])];
+
+    const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
+
     if (filter.search) {
       const q = filter.search.toLowerCase().trim();
       result = result.filter(d =>
-        d.doc_code.toLowerCase().includes(q) ||
-        d.student_id.toLowerCase().includes(q) ||
-        d.student_name.toLowerCase().includes(q) ||
-        d.doc_number.includes(q) ||
+        (d.doc_code && d.doc_code.toLowerCase().includes(q)) ||
+        (d.student_id && d.student_id.toLowerCase().includes(q)) ||
+        (d.student_name && d.student_name.toLowerCase().includes(q)) ||
+        (d.doc_number && String(d.doc_number).includes(q)) ||
         (d.book_code && d.book_code.toLowerCase().includes(q)) ||
         (d.location_code && d.location_code.toLowerCase().includes(q))
       );
     }
     if (filter.student_id) {
-      result = result.filter(d => d.student_id === filter.student_id);
+      result = result.filter(d => String(d.student_id).trim() === String(filter.student_id).trim());
     }
     if (filter.doc_type_code) {
-      result = result.filter(d => d.doc_type_code === filter.doc_type_code);
+      const targetType = norm(filter.doc_type_code);
+      result = result.filter(d => norm(d.doc_type_code) === targetType);
     }
     if (filter.academic_year) {
-      result = result.filter(d => d.academic_year === filter.academic_year);
+      result = result.filter(d => String(d.academic_year).trim() === String(filter.academic_year).trim());
     }
     if (filter.status) {
       result = result.filter(d => d.status === filter.status);
     }
     if (filter.location_code) {
       result = result.filter(d => d.location_code === filter.location_code);
+    }
+    if (filter.book_code) {
+      const targetBookCode = norm(filter.book_code);
+      result = result.filter(d => {
+        if (d.book_code && norm(d.book_code) === targetBookCode) return true;
+        const synthCode = norm(`BOOK-${d.doc_type_code || 'ปพ.1'}-${d.academic_year || ''}-${d.book_number || '01'}`);
+        return synthCode === targetBookCode;
+      });
     }
     return result;
   }
