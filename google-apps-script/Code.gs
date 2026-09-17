@@ -278,11 +278,14 @@ function doPost(e) {
       
       SpreadsheetApp.flush();
 
+      var mergedData = getAllSheetData();
+
       var successOutputStr = JSON.stringify({
         status: "success",
         code: "SUCCESS",
         requestId: contents.requestId || "",
         message: "Synchronized database with Google Sheets successfully!",
+        data: mergedData,
         timestamp: new Date().toISOString()
       });
 

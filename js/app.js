@@ -253,3 +253,16 @@ function autoFetchFromGoogleSheets(silent = false) {
   });
 }
 window.autoFetchFromGoogleSheets = autoFetchFromGoogleSheets;
+
+// Multi-Device Realtime Auto-Sync: Keep all open devices updated
+window.addEventListener('focus', () => {
+  if (window.db && typeof window.autoFetchFromGoogleSheets === 'function') {
+    window.autoFetchFromGoogleSheets(true);
+  }
+});
+
+setInterval(() => {
+  if (window.db && typeof window.autoFetchFromGoogleSheets === 'function') {
+    window.autoFetchFromGoogleSheets(true);
+  }
+}, 25000);

@@ -148,7 +148,7 @@ class RelationalDatabase {
     }
   }
 
-  save(autoSyncSheets = true, source = null) {
+  save(autoSyncSheets = true, source = null, immediate = true) {
     if (source) {
       this.currentSource = source;
     } else if (this.currentSource !== this.DATA_SOURCE.GOOGLE) {
@@ -160,25 +160,28 @@ class RelationalDatabase {
       console.warn('Failed to save to localStorage:', e);
     }
     if (autoSyncSheets && this.currentSource !== this.DATA_SOURCE.GOOGLE) {
-      this.triggerAutoSyncToSheets();
+      this.triggerAutoSyncToSheets(immediate);
     }
   }
 
-  triggerAutoSyncToSheets() {
+  triggerAutoSyncToSheets(immediate = true) {
     if (this._syncTimeout) clearTimeout(this._syncTimeout);
+    const delay = immediate ? 50 : 1200;
     this._syncTimeout = setTimeout(() => {
       const sheetsUrl = (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
       if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
-        console.log('[DB] Save requested');
+        console.log('[DB] Live save requested -> Syncing to Google Sheets immediately');
         this.syncToGoogleSheets().then(res => {
           if (res && res.status === 'queued') {
             console.log('[DB] Save skipped: request already in progress');
+          } else if (res && res.status === 'success') {
+            console.log('[DB] Live sync to Google Sheets completed successfully');
           }
         }).catch(err => {
           console.warn('[DB] Auto sync to Google Sheets background attempt:', err.message);
         });
       }
-    }, 1200);
+    }, delay);
   }
 
   async initializeDatabase() {
@@ -1041,6 +1044,9 @@ class RelationalDatabase {
           this.lastSyncTime = new Date().toLocaleString('th-TH');
           this.lastSyncError = null;
           console.log('[DB] Save success');
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('☁️ บันทึกและอัปเดตข้อมูลลง Google Sheets เรียบร้อยแล้ว', 'success', 3000);
+          }
           return json;
 
         } catch (fetchErr) {
@@ -1062,7 +1068,7 @@ class RelationalDatabase {
       if (this.saveQueued || this.hasPendingSync) {
         this.saveQueued = false;
         this.hasPendingSync = false;
-        setTimeout(() => this.triggerAutoSyncToSheets(), 500);
+        setTimeout(() => this.triggerAutoSyncToSheets(true), 50);
       }
     }
   }
