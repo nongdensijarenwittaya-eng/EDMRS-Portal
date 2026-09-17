@@ -21,7 +21,7 @@ const loginView = {
           <form id="login-form">
             <div class="form-group">
               <label class="form-label required" for="login-username"><i class="fa-solid fa-user"></i> ชื่อผู้ใช้งาน</label>
-              <input type="text" id="login-username" class="form-control" placeholder="กรอกชื่อผู้ใช้งาน (e.g. admin, registrar, staff)" required autocomplete="username">
+              <input type="text" id="login-username" class="form-control" placeholder="กรอกชื่อผู้ใช้งาน" required autocomplete="username">
             </div>
 
             <div class="form-group">
@@ -45,24 +45,6 @@ const loginView = {
               <i class="fa-solid fa-arrow-right-to-bracket"></i> เข้าสู่ระบบ
             </button>
           </form>
-
-          <div class="demo-account-pills">
-            <p><i class="fa-solid fa-user-shield"></i> คลิกเพื่อทดลองเข้าสู่ระบบด้วยสิทธิ์ต่างๆ:</p>
-            <div class="demo-btn-group">
-              <button type="button" class="btn btn-light btn-sm demo-login-btn" data-user="admin" data-pass="admin123">
-                <i class="fa-solid fa-crown text-warning"></i> Super Admin
-              </button>
-              <button type="button" class="btn btn-light btn-sm demo-login-btn" data-user="registrar" data-pass="admin123">
-                <i class="fa-solid fa-user-gear text-primary"></i> Registrar
-              </button>
-              <button type="button" class="btn btn-light btn-sm demo-login-btn" data-user="staff" data-pass="staff123">
-                <i class="fa-solid fa-user-pen text-success"></i> Staff
-              </button>
-              <button type="button" class="btn btn-light btn-sm demo-login-btn" data-user="viewer" data-pass="viewer123">
-                <i class="fa-solid fa-eye text-info"></i> Viewer
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     `;
@@ -101,6 +83,11 @@ const loginView = {
         }
 
         try {
+          if (!window.db.data.users || window.db.data.users.length === 0) {
+            try {
+              await window.db.syncFromGoogleSheets();
+            } catch (sErr) {}
+          }
           const result = await window.authSystem.login(username, password, rememberMe);
           if (result.success) {
             sessionStorage.removeItem('has_loaded_initial');
@@ -133,17 +120,6 @@ const loginView = {
         }
       };
     }
-
-    // Demo account fast-click login buttons
-    document.querySelectorAll('.demo-login-btn').forEach(btn => {
-      btn.onclick = () => {
-        const user = btn.getAttribute('data-user');
-        const pass = btn.getAttribute('data-pass');
-        usernameInput.value = user;
-        passwordInput.value = pass;
-        form.requestSubmit();
-      };
-    });
 
     if (forgotBtn) {
       forgotBtn.onclick = () => {

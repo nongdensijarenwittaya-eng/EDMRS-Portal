@@ -89,6 +89,10 @@ const utils = {
       clearInterval(this._loadingTicker);
       this._loadingTicker = null;
     }
+    if (this._loadingTimeout) {
+      clearTimeout(this._loadingTimeout);
+      this._loadingTimeout = null;
+    }
     this._currentProgress = 15;
 
     let overlay = document.getElementById('cloud-loading-modal-overlay');
@@ -105,10 +109,11 @@ const utils = {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         z-index: 99999;
-        display: flex;
+        display: none;
         align-items: center;
         justify-content: center;
         opacity: 0;
+        pointer-events: none;
         transition: opacity 0.3s ease;
       `;
       document.body.appendChild(overlay);
@@ -188,12 +193,18 @@ const utils = {
       </style>
     `;
 
+    overlay.style.pointerEvents = 'auto';
     overlay.style.display = 'flex';
     requestAnimationFrame(() => {
       overlay.style.opacity = '1';
       const card = overlay.firstElementChild;
       if (card) card.style.transform = 'scale(1)';
     });
+
+    // Auto-dismiss safety net after 3 seconds max so user is NEVER trapped
+    this._loadingTimeout = setTimeout(() => {
+      this.hideLoadingModal();
+    }, 3000);
 
     // Continuously tick progress bar up to 90% while fetching data
     this._loadingTicker = setInterval(() => {
@@ -229,14 +240,17 @@ const utils = {
       clearInterval(this._loadingTicker);
       this._loadingTicker = null;
     }
+    if (this._loadingTimeout) {
+      clearTimeout(this._loadingTimeout);
+      this._loadingTimeout = null;
+    }
     const overlay = document.getElementById('cloud-loading-modal-overlay');
     if (overlay) {
       overlay.style.opacity = '0';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.display = 'none';
       const card = overlay.firstElementChild;
       if (card) card.style.transform = 'scale(0.92)';
-      setTimeout(() => {
-        overlay.style.display = 'none';
-      }, 300);
     }
   },
 

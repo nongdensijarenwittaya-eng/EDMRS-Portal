@@ -35,104 +35,24 @@ class RelationalDatabase {
   }
 
   init() {
-    const saved = localStorage.getItem(DB_STORAGE_KEY);
-    if (saved) {
+    const local = localStorage.getItem(DB_STORAGE_KEY);
+    if (local) {
       try {
-        this.data = JSON.parse(saved);
-        // Ensure legacy missing fields get updated defaults if needed
-        if (!this.data.roles || this.data.roles.length === 0) this.seedRolesAndPermissions();
-        if (!this.data.users) this.seedUsers();
-        if (!this.data.academic_years || this.data.academic_years.length === 0) this.seedAcademicYears();
-        if (!this.data.document_types || this.data.document_types.length === 0) this.seedDocumentTypes();
-        if (!this.data.storage_locations) this.seedStorageLocations();
-
-        // Permanently clear initial sample mock data and prevent re-writing back
-        this.data.is_mock_cleared = true;
-        if (!this.data.students) this.data.students = [];
-        if (!this.data.documents) this.data.documents = [];
-        if (!this.data.books) this.data.books = [];
-        if (!this.data.loans) this.data.loans = [];
-        if (!this.data.deleted_keys) {
-          this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+        const parsed = JSON.parse(local);
+        if (parsed && typeof parsed === 'object') {
+          this.data = { ...this.data, ...parsed };
+          if (!this.data.users || this.data.users.length === 0) this.seedUsers();
+          if (!this.data.students || this.data.students.length === 0) this.seedStudents();
+          if (!this.data.documents || this.data.documents.length === 0) this.seedDocuments();
+          if (!this.data.books || this.data.books.length === 0) this.seedBooks();
+          if (!this.data.storage_locations || this.data.storage_locations.length === 0) this.seedStorageLocations();
+          return;
         }
-
-        if (Array.isArray(this.data.students) && this.data.students.some(s => s.student_id === '65001234')) {
-          this.data.books = [];
-          this.data.students = [];
-          this.data.documents = [];
-          this.data.loans = [];
-        }
-
-        if (Array.isArray(this.data.storage_locations) && this.data.storage_locations.some(l => l.code === 'LOC-B02-04-01' || l.code === 'LOC-A01-01-01')) {
-          this.data.storage_locations = [];
-        }
-
-        // Automatic deduplication & deleted filter sweep across all entities
-        const keyPropMap = {
-          users: 'username',
-          students: 'student_id',
-          documents: 'doc_code',
-          books: 'book_code',
-          loans: 'loan_code',
-          storage_locations: 'code'
-        };
-        ['users', 'students', 'documents', 'books', 'loans', 'storage_locations'].forEach(entity => {
-          if (!Array.isArray(this.data[entity])) this.data[entity] = [];
-          const deletedList = (this.data.deleted_keys[entity] || []).map(k => String(k).toLowerCase());
-          const keyProp = keyPropMap[entity];
-          const uniqueItems = [];
-          const seen = new Set();
-          this.data[entity].forEach(item => {
-            const keyVal = String(item[keyProp] || item.id || '').trim().toLowerCase();
-            if (keyVal && !seen.has(keyVal) && !deletedList.includes(keyVal)) {
-              seen.add(keyVal);
-              uniqueItems.push(item);
-            }
-          });
-          this.data[entity] = uniqueItems;
-        });
-
-        if (!this.data.audit_logs || this.data.audit_logs.length === 0) this.seedAuditLogs();
-        if (!this.data.settings) this.seedSettings();
-        if (!this.data.settings.org_name_th || this.data.settings.org_name_th === 'โรงเรียนสาธิตวิทยาการการศึกษา') {
-          this.data.settings.org_name_th = 'โรงเรียนหนองเดิ่นศรีเจริญวิทยา';
-          this.data.settings.org_name_en = 'Nongdoensricharoenwittaya School';
-        }
-        if (!this.data.settings.logo_url || this.data.settings.logo_url === 'assets/logo.png') {
-          this.data.settings.logo_url = 'https://lh3.googleusercontent.com/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU';
-        }
-        this.data.settings.sheets_url = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
-        if (!this.data.settings.drive_folder || this.data.settings.drive_folder === '1A2B3C4D5E6F7G8H9_EDMRS_Vault_Root') {
-          this.data.settings.drive_folder = '1FvbKtV0uFyPUfZPLLfQQHE45oH8fatTv';
-        }
-
-        // Auto-migrate any legacy assets/sample_porpor.pdf file_urls to working Google Drive document link
-        const defaultSampleDriveUrl = 'https://drive.google.com/file/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU/view?usp=sharing';
-        if (Array.isArray(this.data.students)) {
-          this.data.students.forEach(s => {
-            if (!s.file_url || s.file_url === 'assets/sample_porpor.pdf' || s.file_url === 'assets/sample_porpor.png') {
-              s.file_url = defaultSampleDriveUrl;
-            }
-          });
-        }
-        if (Array.isArray(this.data.documents)) {
-          this.data.documents.forEach(d => {
-            if (!d.file_url || d.file_url === 'assets/sample_porpor.pdf' || d.file_url === 'assets/sample_porpor.png') {
-              d.file_url = defaultSampleDriveUrl;
-            }
-          });
-        }
-
-        this.sanitizeAllData();
-        this.save(false);
-        if (!this.data.notifications) this.seedNotifications();
       } catch (e) {
-        console.error('Failed to parse existing DB. Re-seeding database...', e);
-        this.seedDefaultData();
+        console.warn('Failed to parse local DB:', e);
       }
-    } else {
-      this.seedDefaultData();
     }
+    this.seedDefaultData();
   }
 
   isJunkText(str) {
@@ -203,7 +123,11 @@ class RelationalDatabase {
   }
 
   save(autoSyncSheets = true) {
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
+    try {
+      localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
+    } catch (e) {
+      console.warn('Failed to save to localStorage:', e);
+    }
     this.triggerAutoSyncToSheets();
   }
 
@@ -269,55 +193,18 @@ class RelationalDatabase {
   }
 
   seedUsers() {
-    // Salted SHA-256 equivalent mock hashes for demo accounts
     this.data.users = [
       {
         id: 1,
         username: 'admin',
-        password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', // admin123
+        password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
         title: 'นาย',
-        first_name: 'สมศักดิ์',
-        last_name: 'วิทยากร',
+        first_name: 'ผู้ดูแลระบบ',
+        last_name: 'สูงสุด',
         role_code: 'super_admin',
         email: 'admin@school.ac.th',
         status: 'active',
         created_at: '2026-01-10 09:00:00'
-      },
-      {
-        id: 2,
-        username: 'registrar',
-        password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', // admin123
-        title: 'นาง',
-        first_name: 'นภาพร',
-        last_name: 'เจริญสุข',
-        role_code: 'administrator',
-        email: 'registrar@school.ac.th',
-        status: 'active',
-        created_at: '2026-01-12 10:15:00'
-      },
-      {
-        id: 3,
-        username: 'staff',
-        password_hash: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', // staff123
-        title: 'นาย',
-        first_name: 'กิตติศักดิ์',
-        last_name: 'มั่นคง',
-        role_code: 'staff',
-        email: 'staff@school.ac.th',
-        status: 'active',
-        created_at: '2026-01-15 11:30:00'
-      },
-      {
-        id: 4,
-        username: 'viewer',
-        password_hash: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', // viewer123
-        title: 'นางสาว',
-        first_name: 'ปรียา',
-        last_name: 'สว่างศรี',
-        role_code: 'viewer',
-        email: 'viewer@school.ac.th',
-        status: 'active',
-        created_at: '2026-02-01 14:00:00'
       }
     ];
   }
@@ -712,6 +599,7 @@ class RelationalDatabase {
       studentCount = uniqueStudents.length;
     } else {
       this.data.students = [];
+      studentCount = 0;
     }
 
     // 2. Documents
@@ -789,6 +677,7 @@ class RelationalDatabase {
       docCount = uniqueDocs.length;
     } else {
       this.data.documents = [];
+      docCount = 0;
     }
 
     // 3. Books
@@ -829,6 +718,7 @@ class RelationalDatabase {
       bookCount = uniqueBooks.length;
     } else {
       this.data.books = [];
+      bookCount = 0;
     }
 
     // 4. Loans / Document Copy Requests
@@ -865,6 +755,7 @@ class RelationalDatabase {
       loanCount = uniqueLoans.length;
     } else {
       this.data.loans = [];
+      loanCount = 0;
     }
 
     // 5. Storage Locations
@@ -895,6 +786,7 @@ class RelationalDatabase {
       locCount = uniqueLocs.length;
     } else {
       this.data.storage_locations = [];
+      locCount = 0;
     }
 
     // 6. Users
@@ -911,7 +803,7 @@ class RelationalDatabase {
         email: String(row[5] || '').trim(),
         status: 'active',
         created_at: String(row[6] || '').trim(),
-        password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'
+        password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim()
       })).filter(u => u.username);
 
       const uniqueUsers = [];
@@ -923,10 +815,14 @@ class RelationalDatabase {
           uniqueUsers.push(u);
         }
       });
+
       this.data.users = uniqueUsers;
       userCount = uniqueUsers.length;
-    } else if (Array.isArray(sheetData.Users)) {
-      this.data.users = [];
+    } else {
+      if (!this.data.users || this.data.users.length === 0) {
+        this.seedUsers();
+      }
+      userCount = this.data.users.length;
     }
 
     // 7. Settings

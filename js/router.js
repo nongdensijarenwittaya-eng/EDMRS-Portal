@@ -100,22 +100,26 @@ class AppRouter {
 
     // Toggle Login Body vs Main Dashboard App Shell UI
     const appEl = document.getElementById('app');
+    let loginContainer = document.getElementById('login-container');
+    if (!loginContainer) {
+      loginContainer = document.createElement('div');
+      loginContainer.id = 'login-container';
+      document.body.appendChild(loginContainer);
+    }
+
     if (routeName === 'login') {
       if (appEl) appEl.style.display = 'none';
-      const mainContent = document.getElementById('main-content');
-      document.body.className = '';
+      loginContainer.style.display = 'block';
       if (window.loginView) {
-        document.body.innerHTML = window.loginView.render();
+        loginContainer.innerHTML = window.loginView.render();
         if (window.loginView.initEvents) window.loginView.initEvents();
       }
       return;
     }
 
     // Ensure App shell is visible for logged-in routes
-    if (appEl && appEl.style.display === 'none') {
-      window.location.reload();
-      return;
-    }
+    if (loginContainer) loginContainer.style.display = 'none';
+    if (appEl) appEl.style.display = 'flex';
 
     const view = this.getRouteView(routeName);
     const mainContent = document.getElementById('main-content');

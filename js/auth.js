@@ -48,12 +48,9 @@ class AuthSystem {
       return { success: false, message: 'บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน' };
     }
 
-    // Hash check or demo password bypass check ('admin123' / 'staff123' / 'viewer123')
+    // Compare password hash strictly
     const passwordHash = await this.hashPassword(password);
-    const isValid = (passwordHash === user.password_hash) || 
-                    (password === 'admin123' && (user.role_code === 'super_admin' || user.role_code === 'administrator')) ||
-                    (password === 'staff123' && user.role_code === 'staff') ||
-                    (password === 'viewer123' && user.role_code === 'viewer');
+    const isValid = (passwordHash === user.password_hash);
 
     if (!isValid) {
       return { success: false, message: 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง' };
