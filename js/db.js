@@ -64,7 +64,7 @@ class RelationalDatabase {
         if (parsed && typeof parsed === 'object') {
           this.data = { ...this.data, ...parsed };
           if (!this.data.settings) this.data.settings = {};
-          if (!this.data.settings.sheets_url) this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
+          this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
           if (!this.data.users || this.data.users.length === 0) this.seedUsers();
           if (!this.data.students || this.data.students.length === 0) this.seedStudents();
           if (!this.data.documents || this.data.documents.length === 0) this.seedDocuments();
@@ -78,7 +78,7 @@ class RelationalDatabase {
     }
     this.seedDefaultData();
     if (!this.data.settings) this.data.settings = {};
-    if (!this.data.settings.sheets_url) this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
+    this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
   }
 
   isJunkText(str) {
