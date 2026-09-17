@@ -809,6 +809,30 @@ class RelationalDatabase {
           student_id: String(row[1] || '').trim(),
           student_name: String(row[2] || '').trim(),
           doc_type_code: String(row[3] || 'ปพ.1').trim(),
+          borrower_name: String(row[4] || '').trim(),
+          borrower_dept: String(row[5] || '').trim(),
+          loan_date: String(row[6] || '').trim(),
+          return_due_date: String(row[7] || '').trim(),
+          reason: String(row[8] || '').trim(),
+          status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
+        };
+        return this.sanitizeLoanItem(item);
+      }).filter(l => l.loan_code);
+
+      const uniqueLoans = [];
+      const seenLoanCodes = new Set();
+      parsedLoans.forEach(l => {
+        const lcode = String(l.loan_code).toLowerCase();
+        if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
+          seenLoanCodes.add(lcode);
+          uniqueLoans.push(l);
+        }
+      });
+
+      this.data.loans = uniqueLoans;
+      loanCount = uniqueLoans.length;
+    } else {
+      this.data.loans = [];
       loanCount = 0;
     }
 
