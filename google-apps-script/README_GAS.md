@@ -39,10 +39,4 @@
 ## ✨ ผลลัพธ์การทำงานอัตโนมัติ
 
 1. **Google Sheets**:
-   - ระบบจะสร้างชีท `Users`, `Students`, `Documents`, `Books`, `Loans`, และ `Storage_Locations` พร้อมจัดรูปแบบหัวตารางสวยงามและลงข้อมูลซิงก์ตรงกันทุกประการ
-2. **Google Drive**:
-   - ระบบจะสร้างโฟลเดอร์ `EDMRS_Drive_Vault/`
-   - ด้านในจะสร้างโฟลเดอร์อัลบั้มแยกสำหรับแต่ละทะเบียนเล่มอัตโนมัติ เช่น:
-     - `EDMRS_Drive_Vault/BOOK-P1-2565-01/`
-     - `EDMRS_Drive_Vault/BOOK-P1-2565-02/`
-     - `EDMRS_Drive_Vault/BOOK-P2-2565-01/`
+   - ระบบจะสร้างชีท `Users`, `Students`, `Documents`, `Books`, `Loans`, และ `Storage_Locations` พร้อมจัดรูปแบบหัวตารางสวยงามและลงข้อมูลซิงก์ตรงกันทุกประการ (จัดเก็บเฉพาะข้อมูลทางบรรณานุกรมและทะเบียนเอกสาร โดยยกเลิกการเก็บรูปภาพและไฟล์สำเนาลง Google Sheets/Drive)

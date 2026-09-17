@@ -41,27 +41,27 @@ function onOpen() {
 function initSheetsStructure() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. Tab: Students (ข้อมูลนักเรียน - 12 คอลัมน์)
+  // 1. Tab: Students (ข้อมูลนักเรียน - 10 คอลัมน์)
   var studentsSheet = ss.getSheetByName("Students") || ss.insertSheet("Students");
   if (studentsSheet.getLastRow() === 0) {
-    studentsSheet.appendRow(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สำเนาปพ. ด้านหน้า", "สำเนาปพ. ด้านหลัง", "สถานะ"]);
-    studentsSheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
+    studentsSheet.appendRow(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ"]);
+    studentsSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
     studentsSheet.setFrozenRows(1);
   }
 
-  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 12 คอลัมน์)
+  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 9 คอลัมน์)
   var docsSheet = ss.getSheetByName("Documents") || ss.insertSheet("Documents");
   if (docsSheet.getLastRow() === 0) {
-    docsSheet.appendRow(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
-    docsSheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+    docsSheet.appendRow(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code"]);
+    docsSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
     docsSheet.setFrozenRows(1);
   }
 
-  // 3. Tab: Books (ทะเบียนเล่มเอกสาร - 9 คอลัมน์)
+  // 3. Tab: Books (ทะเบียนเล่มเอกสาร - 8 คอลัมน์)
   var booksSheet = ss.getSheetByName("Books") || ss.insertSheet("Books");
   if (booksSheet.getLastRow() === 0) {
-    booksSheet.appendRow(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Google Drive Album Path"]);
-    booksSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
+    booksSheet.appendRow(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code"]);
+    booksSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
     booksSheet.setFrozenRows(1);
   }
 
@@ -102,23 +102,32 @@ function initSheetsStructure() {
  * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
  */
 function doGet(e) {
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
+  try {
+    hasLock = lock.waitLock(15000); // 15-second lock for safe concurrent reads
+  } catch (lErr) {
+    console.warn("Read lock wait warning:", lErr);
+  }
+
   try {
     e = e || { parameter: {} };
     var parameter = e.parameter || {};
     var action = parameter.action || "ping";
     
     if (action === "ping") {
-      // สร้างแท็บและคอลัมน์อัตโนมัติเมื่อมีการทดสอบเชื่อมต่อ
       initSheetsStructure();
+      SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "EDMRS Google Apps Script Web App API is Active & Columns Initialized!",
+        message: "EDMRS Google Apps Script Web App API is Active & Lock Protected!",
         timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (action === "init_structure" || action === "setup") {
       initSheetsStructure();
+      SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         message: "Created all Google Sheets tabs & columns automatically!"
@@ -126,10 +135,12 @@ function doGet(e) {
     }
     
     if (action === "get_all") {
+      SpreadsheetApp.flush();
       var data = getAllSheetData();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        data: data
+        data: data,
+        timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -139,21 +150,45 @@ function doGet(e) {
       status: "error",
       message: error.toString()
     })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (e) {}
+    }
   }
 }
 
 /**
  * HTTP POST Request Handler - สำหรับบันทึก/ซิงก์ข้อมูล และอัปโหลดไฟล์ไปที่ Google Drive Albums
+ * พร้อมระบบ Script Lock ป้องกันการเขียนทับข้อมูลเมื่อใช้งานหลายเครื่องพร้อมกัน
  */
 function doPost(e) {
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
+  try {
+    // รอรับสิทธิ์ล็อกสูงสุด 30 วินาที เพื่อป้องกันการบันทึกชนกันจากหลายอุปกรณ์พร้อมกัน
+    hasLock = lock.waitLock(30000);
+    if (!hasLock) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "error",
+        message: "ขณะนี้มีอุปกรณ์อื่นกำลังบันทึกข้อมูลอยู่ โปรดลองใหม่อีกครั้งในอีกสักครู่ (Lock Timeout)"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (lockErr) {
+    console.warn("Write lock acquire warning:", lockErr);
+  }
+
   try {
     e = e || { postData: { contents: "{}" } };
     var postData = e.postData || {};
-    var contents = postData.contents ? JSON.parse(postData.contents) : {};
+    var contents = {};
+    if (postData.contents) {
+      try { contents = JSON.parse(postData.contents); } catch(pErr) { contents = {}; }
+    }
     var action = contents.action || "sync_database";
 
     if (action === "init_structure" || action === "setup") {
       initSheetsStructure();
+      SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         message: "Created all Google Sheets tabs & columns automatically!"
@@ -161,8 +196,10 @@ function doPost(e) {
     }
 
     if (action === "sync_database") {
-      // ซิงก์ข้อมูลตารางทั้งหมดลง Google Sheets (ผู้ใช้, นักเรียน, เอกสาร, เล่ม, ยืม-คืน, สถานที่จัดเก็บ, ตั้งค่าระบบ)
+      // 1. ตรวจสอบโครงสร้างตาราง
       initSheetsStructure();
+
+      // 2. ซิงก์ข้อมูลรวมแบบ Differential Concurrency Merge ป้องกันข้อมูลหาย
       var deletedKeys = contents.deleted_keys || {};
       syncUsersSheet(contents.users || [], deletedKeys.users || []);
       syncStudentsSheet(contents.students || [], deletedKeys.students || []);
@@ -172,25 +209,25 @@ function doPost(e) {
       syncStorageLocationsSheet(contents.storage_locations || [], deletedKeys.storage_locations || []);
       syncSettingsSheet(contents.settings || {});
       
+      // 3. บังคับบันทึกการเปลี่ยนแปลงลง Google Sheets ทันที
+      SpreadsheetApp.flush();
+
+      // 4. อ่านฐานข้อมูลฉบับสมบูรณ์ล่าสุดส่งกลับไปยังเครื่องที่บันทึก
+      var updatedData = getAllSheetData();
+
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "Synchronized database with Smart Concurrency Differential Merge to Google Sheets successfully!"
+        message: "Synchronized database with Lock Protection & Smart Differential Merge successfully!",
+        data: updatedData,
+        timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
     if (action === "upload_file_to_album") {
-      // อัปโหลดไฟล์สแกน (PDF/JPG/PNG) ไปเก็บไว้ในอัลบั้ม Google Drive ประจำเล่ม
-      var bookCode = contents.book_code || "UNASSIGNED";
-      var fileName = contents.file_name || "scan.pdf";
-      var base64Data = contents.base64_data;
-      var fileType = contents.file_type || "application/pdf";
-      
-      var fileUrl = saveFileToDriveAlbum(bookCode, fileName, base64Data, fileType);
-      
       return ContentService.createTextOutput(JSON.stringify({
-        status: "success",
-        file_url: fileUrl,
-        message: "Saved file to Google Drive Album: " + bookCode
+        status: "disabled",
+        file_url: "",
+        message: "การเก็บไฟล์และเอกสารรูปภาพบน Google Drive ถูกปิดใช้งานแล้ว"
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -201,6 +238,10 @@ function doPost(e) {
       status: "error",
       message: error.toString()
     })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (e) {}
+    }
   }
 }
 
@@ -271,7 +312,8 @@ function syncStudentsSheet(students, deletedKeys) {
 
   var studentMap = {};
   if (sheet.getLastRow() > 1) {
-    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+    var cols = Math.min(sheet.getLastColumn(), 10);
+    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var sid = String(row[0] || "").trim();
       if (sid && !deletedMap[sid.toLowerCase()]) {
@@ -285,9 +327,7 @@ function syncStudentsSheet(students, deletedKeys) {
           academic_year: String(row[6] || ""),
           doc_number: String(row[7] || ""),
           set_number: String(row[8] || ""),
-          file_url: String(row[9] || ""),
-          file_url_back: String(row[10] || ""),
-          status: String(row[11] || "ปกติ")
+          status: String(row[9] || "ปกติ")
         };
       }
     });
@@ -307,8 +347,6 @@ function syncStudentsSheet(students, deletedKeys) {
           academic_year: String(s.academic_year || ""),
           doc_number: String(s.doc_number || ""),
           set_number: String(s.set_number || s.book_number || ""),
-          file_url: String(s.file_url || ""),
-          file_url_back: String(s.file_url_back || ""),
           status: String(s.status || "ปกติ")
         };
       }
@@ -317,15 +355,10 @@ function syncStudentsSheet(students, deletedKeys) {
 
   sheet.clearContents();
   var rows = [];
-  rows.push(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สำเนาปพ. ด้านหน้า", "สำเนาปพ. ด้านหลัง", "สถานะ"]);
+  rows.push(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ"]);
 
   Object.keys(studentMap).forEach(function(key) {
     var s = studentMap[key];
-    var driveUrlFront = s.file_url || "";
-    var driveUrlBack = s.file_url_back || "";
-    var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : driveUrlFront;
-    var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : driveUrlBack;
-
     rows.push([
       s.student_id,
       s.prefix,
@@ -336,14 +369,12 @@ function syncStudentsSheet(students, deletedKeys) {
       s.academic_year,
       s.doc_number,
       s.set_number,
-      hyperlinkFront,
-      hyperlinkBack,
       s.status
     ]);
   });
 
-  sheet.getRange(1, 1, rows.length, 12).setValues(rows);
-  sheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
+  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
+  sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
 }
 
@@ -369,7 +400,8 @@ function syncDocumentsSheet(documents, deletedKeys) {
 
   var docMap = {};
   if (sheet.getLastRow() > 1) {
-    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 12).getValues();
+    var cols = Math.min(sheet.getLastColumn(), 9);
+    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var dcode = String(row[0] || "").trim();
       if (dcode && !deletedMap[dcode.toLowerCase()]) {
@@ -390,10 +422,7 @@ function syncDocumentsSheet(documents, deletedKeys) {
           book_number: String(row[5] || ""),
           doc_number: String(row[6] || ""),
           status: String(row[7] || ""),
-          location_code: String(row[8] || ""),
-          file_name: String(row[9] || ""),
-          file_url: String(row[10] || ""),
-          file_url_back: String(row[11] || "")
+          location_code: String(row[8] || "")
         };
       }
     });
@@ -423,10 +452,7 @@ function syncDocumentsSheet(documents, deletedKeys) {
           book_number: String(d.book_number || ""),
           doc_number: String(d.doc_number || ""),
           status: String(d.status || ""),
-          location_code: String(d.location_code || ""),
-          file_name: String(d.file_name || ""),
-          file_url: String(d.file_url || ""),
-          file_url_back: String(d.file_url_back || "")
+          location_code: String(d.location_code || "")
         };
       }
     });
@@ -434,15 +460,10 @@ function syncDocumentsSheet(documents, deletedKeys) {
 
   sheet.clearContents();
   var rows = [];
-  rows.push(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "ชื่อไฟล์ดิจิทัล", "ลิงก์ Google Drive (หน้า)", "ลิงก์ Google Drive (หลัง)"]);
+  rows.push(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code"]);
 
   Object.keys(docMap).forEach(function(key) {
     var d = docMap[key];
-    var driveUrlFront = d.file_url || "";
-    var driveUrlBack = d.file_url_back || "";
-    var hyperlinkFront = (driveUrlFront && driveUrlFront.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlFront + '", "เปิดไฟล์ด้านหน้า")' : driveUrlFront;
-    var hyperlinkBack = (driveUrlBack && driveUrlBack.indexOf("http") === 0) ? '=HYPERLINK("' + driveUrlBack + '", "เปิดไฟล์ด้านหลัง")' : driveUrlBack;
-
     rows.push([
       d.doc_code,
       d.student_id,
@@ -452,15 +473,12 @@ function syncDocumentsSheet(documents, deletedKeys) {
       d.book_number,
       d.doc_number,
       d.status,
-      d.location_code,
-      d.file_name,
-      hyperlinkFront,
-      hyperlinkBack
+      d.location_code
     ]);
   });
 
-  sheet.getRange(1, 1, rows.length, 12).setValues(rows);
-  sheet.getRange(1, 1, 1, 12).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
+  sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
 }
 
@@ -480,7 +498,8 @@ function syncBooksSheet(books, deletedKeys) {
 
   var bookMap = {};
   if (sheet.getLastRow() > 1) {
-    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+    var cols = Math.min(sheet.getLastColumn(), 8);
+    var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var bcode = String(row[0] || "").trim();
       if (bcode && !deletedMap[bcode.toLowerCase()]) {
@@ -518,7 +537,7 @@ function syncBooksSheet(books, deletedKeys) {
 
   sheet.clearContents();
   var rows = [];
-  rows.push(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Google Drive Album Path"]);
+  rows.push(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code"]);
 
   Object.keys(bookMap).forEach(function(key) {
     var b = bookMap[key];
@@ -530,13 +549,12 @@ function syncBooksSheet(books, deletedKeys) {
       b.start_no,
       b.end_no,
       b.item_count,
-      b.location_code,
-      "EDMRS_Drive_Vault/" + b.book_code + "/"
+      b.location_code
     ]);
   });
 
-  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
-  sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
+  sheet.getRange(1, 1, rows.length, 8).setValues(rows);
+  sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
   sheet.setFrozenRows(1);
 }
 

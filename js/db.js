@@ -635,6 +635,25 @@ class RelationalDatabase {
       throw new Error(json.message || 'ไม่สามารถดึงข้อมูลจาก Google Sheets ได้');
     }
 
+    const getFingerprint = (d) => {
+      if (!d) return '';
+      const s = d.students || [];
+      const doc = d.documents || [];
+      const b = d.books || [];
+      const l = d.loans || [];
+      const loc = d.storage_locations || [];
+      const u = d.users || [];
+      return [
+        s.map(i => `${i.student_id}:${i.prefix}:${i.first_name}:${i.last_name}:${i.grade_level}:${i.academic_year}:${i.doc_number}:${i.status}`).join(';'),
+        doc.map(i => `${i.doc_code}:${i.student_id}:${i.student_name}:${i.doc_type_code}:${i.academic_year}:${i.book_number}:${i.doc_number}:${i.status}:${i.location_code}`).join(';'),
+        b.map(i => `${i.book_code}:${i.doc_type_code}:${i.academic_year}:${i.book_number}:${i.start_number}:${i.end_number}:${i.item_count}:${i.location_code}`).join(';'),
+        l.map(i => `${i.id}:${i.student_id}:${i.student_name}:${i.doc_type_code}:${i.requester_name}:${i.status}`).join(';'),
+        loc.map(i => `${i.code}:${i.building}:${i.room}:${i.cabinet}:${i.shelf}:${i.folder}`).join(';'),
+        u.map(i => `${i.username}:${i.first_name}:${i.last_name}:${i.role_code}`).join(';')
+      ].join('||');
+    };
+
+    const oldFingerprint = getFingerprint(this.data);
     const sheetData = json.data;
     let studentCount = 0, docCount = 0, bookCount = 0, loanCount = 0, locCount = 0;
     this.data.is_mock_cleared = true;
@@ -674,9 +693,9 @@ class RelationalDatabase {
         doc_number: String(row[7] || '').trim(),
         set_number: String(row[8] || '').trim(),
         book_number: String(row[8] || '').trim(),
-        file_url: extractUrl(row[9]),
-        file_url_back: extractUrl(row[10]),
-        status: String(row[11] || 'graduated').trim()
+        file_url: row.length >= 12 ? extractUrl(row[9]) : '',
+        file_url_back: row.length >= 12 ? extractUrl(row[10]) : '',
+        status: String((row.length >= 12 ? row[11] : row[9]) || 'graduated').trim()
       })).filter(s => s.student_id);
 
       const uniqueStudents = [];
@@ -701,7 +720,7 @@ class RelationalDatabase {
       const parsedDocs = rows.map((row, idx) => {
         let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
 
-        if (row.length >= 12 || (row.length >= 10 && (String(row[1]).match(/^\d{5,}$/) || String(row[2]).includes(' ') || String(row[3]).includes('ปพ.')))) {
+        if (row.length >= 12) {
           docCode = String(row[0] || '').trim();
           stdId = String(row[1] || '').trim();
           stdName = String(row[2] || '').trim();
@@ -714,6 +733,16 @@ class RelationalDatabase {
           fileName = String(row[9] || '').trim();
           rawDriveUrl = String(row[10] || '').trim();
           rawDriveUrlBack = String(row[11] || '').trim();
+        } else if (row.length >= 9) {
+          docCode = String(row[0] || '').trim();
+          stdId = String(row[1] || '').trim();
+          stdName = String(row[2] || '').trim();
+          docTypeCode = String(row[3] || 'ปพ.1').trim();
+          gradYear = String(row[4] || '2565').trim();
+          setNo = String(row[5] || '01').trim();
+          docNum = String(row[6] || '001').trim();
+          status = String(row[7] || 'stored').trim();
+          locationCode = String(row[8] || '').trim();
         } else {
           docCode = String(row[0] || '').trim();
           docTypeCode = String(row[1] || 'ปพ.1').trim();
@@ -722,9 +751,6 @@ class RelationalDatabase {
           docNum = String(row[4] || '001').trim();
           status = String(row[5] || 'stored').trim();
           locationCode = String(row[6] || '').trim();
-          fileName = String(row[7] || '').trim();
-          rawDriveUrl = String(row[8] || '').trim();
-          rawDriveUrlBack = String(row[9] || '').trim();
         }
 
         const driveUrl = extractUrl(rawDriveUrl);
@@ -742,10 +768,10 @@ class RelationalDatabase {
           status: status,
           location_code: locationCode,
           file_name: fileName || `ปพ_${gradYear}_${setNo}_${docNum}.pdf`,
-          file_url: driveUrl || 'assets/sample_porpor.pdf',
-          file_url_back: driveUrlBack || '',
+          file_url: driveUrl,
+          file_url_back: driveUrlBack,
           book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
-          file_size: driveUrl.includes('drive') ? 'Google Drive' : '1.5 MB'
+          file_size: driveUrl.includes('drive') ? 'Google Drive' : 'N/A'
         });
       }).filter(d => d.doc_code || d.doc_number || d.student_id);
 
@@ -921,7 +947,10 @@ class RelationalDatabase {
     this.addAuditLog('Google Sheets', 'ดึงฐานข้อมูลจาก Google Sheets', `ดึงข้อมูลจากชีทสำเร็จ: ${studentCount} นักเรียน, ${docCount} เอกสาร, ${bookCount} เล่ม, ${userCount} ผู้ใช้`);
     this.save(false);
 
-    return { studentCount, docCount, bookCount, loanCount, locCount, userCount };
+    const newFingerprint = getFingerprint(this.data);
+    const dataChanged = (oldFingerprint !== newFingerprint);
+
+    return { studentCount, docCount, bookCount, loanCount, locCount, userCount, dataChanged };
   }
 
   clearMockData() {
@@ -981,66 +1010,20 @@ class RelationalDatabase {
       throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
     }
 
+    // Auto-fetch fresh merged database from Google Sheets to ensure local data is 100% in sync
+    try {
+      await this.syncFromGoogleSheets(sheetsUrl);
+    } catch (syncBackErr) {
+      console.warn('Auto sync-back warning:', syncBackErr);
+    }
+
     this.addAuditLog('Google Sheets', 'ซิงก์ฐานข้อมูลไป Google Sheets', 'อัปเดตข้อมูลนักเรียน เอกสาร เล่ม และยืม-คืน ลง Google Sheets เรียบร้อย');
     return json;
   }
 
-  // Upload Camera Captured Photo or Scanner File to Google Drive Album via Apps Script API
+  // Upload Camera Captured Photo or Scanner File to Google Drive Album via Apps Script API (Disabled per user requirement)
   async uploadScanFileToDrive(fileOrBlob, fileName = 'scan_document.png', bookCode = 'UNASSIGNED') {
-    const sheetsUrl = this.data.settings && this.data.settings.sheets_url;
-    if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
-      console.warn('No Google Sheets Web App URL configured. Cannot upload file to Drive.');
-      return null;
-    }
-
-    try {
-      let base64Data = '';
-      let fileType = 'image/png';
-
-      if (typeof fileOrBlob === 'string' && fileOrBlob.startsWith('data:')) {
-        const parts = fileOrBlob.split(',');
-        const mimeMatch = parts[0].match(/:(.*?);/);
-        if (mimeMatch) fileType = mimeMatch[1];
-        base64Data = parts[1];
-      } else if (fileOrBlob instanceof Blob || fileOrBlob instanceof File) {
-        fileType = fileOrBlob.type || 'image/png';
-        base64Data = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const res = reader.result;
-            const b64 = res.split(',')[1];
-            resolve(b64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(fileOrBlob);
-        });
-      }
-
-      const payload = {
-        action: 'upload_file_to_album',
-        book_code: bookCode,
-        file_name: fileName || `Scan_Document_${Date.now()}.png`,
-        file_type: fileType,
-        base64_data: base64Data
-      };
-
-      const res = await fetch(sheetsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.status === 'success' && json.file_url) {
-          console.log('Uploaded scan file to Google Drive Album:', json.file_url);
-          this.addAuditLog('Google Drive', 'อัปโหลดไฟล์สแกน/กล้อง', `อัปโหลดไฟล์ ${fileName} ลง Google Drive อัลบั้ม ${bookCode}`);
-          return json.file_url;
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to upload scan file to Drive:', err);
-    }
+    console.log('File and document storage on Google Drive is disabled.');
     return null;
   }
 

@@ -107,7 +107,6 @@ const studentsView = {
                 <th>(คำนำหน้า) ชื่อ-สกุล</th>
                 <th>ระดับชั้น</th>
                 <th>ปีที่สำเร็จการศึกษา</th>
-                <th>สำเนา ปพ.</th>
                 <th style="text-align: center;">จัดการ</th>
               </tr>
             </thead>
@@ -124,18 +123,6 @@ const studentsView = {
                   </td>
                   <td><span class="badge badge-secondary">${s.grade_level || '-'}</span></td>
                   <td>${s.academic_year || '-'}</td>
-                  <td>
-                    <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;">
-                      <button class="btn btn-light btn-sm view-student-file-btn" data-url="${s.file_url || 'assets/sample_porpor.pdf'}" data-name="${s.prefix}${s.first_name} ${s.last_name} (ด้านหน้า)" data-code="${s.student_id}" title="คลิกดูไฟล์ ปพ. ด้านหน้า">
-                        ${window.utils.isDriveUrl(s.file_url) ? '<i class="fa-brands fa-google-drive text-success"></i> เปิดด้านหน้า' : '<i class="fa-solid fa-file-pdf text-danger"></i> ด้านหน้า'}
-                      </button>
-                      ${s.file_url_back ? `
-                        <button class="btn btn-light btn-sm view-student-file-btn" data-url="${s.file_url_back}" data-name="${s.prefix}${s.first_name} ${s.last_name} (ด้านหลัง)" data-code="${s.student_id}" title="คลิกดูไฟล์ ปพ. ด้านหลัง">
-                          ${window.utils.isDriveUrl(s.file_url_back) ? '<i class="fa-brands fa-google-drive text-success"></i> เปิดด้านหลัง' : '<i class="fa-solid fa-file-pdf text-info"></i> ด้านหลัง'}
-                        </button>
-                      ` : ''}
-                    </div>
-                  </td>
                   <td style="text-align: center;">
                     <div style="display: flex; gap: 0.35rem; justify-content: center;">
                       <a href="#student-detail?id=${s.student_id}" class="btn btn-secondary btn-sm" title="ดูรายละเอียดเอกสาร">
@@ -156,7 +143,7 @@ const studentsView = {
                 </tr>
               `).join('') : `
                 <tr>
-                  <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                  <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
                     <i class="fa-solid fa-folder-open" style="font-size: 2rem; margin-bottom: 0.5rem; display: block;"></i>
                     ไม่พบข้อมูลนักเรียนที่ตรงกับเงื่อนไข
                   </td>
@@ -251,17 +238,7 @@ const studentsView = {
       };
     }
 
-    // View Student Document File Button Delegates
-    document.querySelectorAll('.view-student-file-btn').forEach(btn => {
-      btn.onclick = () => {
-        const url = btn.getAttribute('data-url');
-        const name = btn.getAttribute('data-name');
-        const code = btn.getAttribute('data-code');
-        const std = window.db.getStudentById(code);
-        const urlBack = (std && std.file_url_back) ? std.file_url_back : (btn.getAttribute('data-url-back') || '');
-        window.utils.openFilePreviewModal(url, `สำเนา ปพ. - ${name}`, code, urlBack);
-      };
-    });
+
 
     // Edit & Delete Event Delegates
     document.querySelectorAll('.edit-student-btn').forEach(btn => {
@@ -308,8 +285,7 @@ const studentsView = {
           'ชื่อ': s.first_name,
           'นามสกุล': s.last_name,
           'ระดับชั้น': s.grade_level,
-          'ปีที่สำเร็จการศึกษา': s.academic_year,
-          'สำเนา ปพ. Link': s.file_url || ''
+          'ปีที่สำเร็จการศึกษา': s.academic_year
         }));
         window.utils.exportToExcel('รายการนักเรียน', 'Students', exportData);
       };
@@ -412,50 +388,6 @@ const studentsView = {
             <input type="text" id="modal-academic-year" class="form-control" placeholder="เช่น 2569" value="${student ? student.academic_year : '2569'}" required>
           </div>
         </div>
-
-        <div class="form-group" style="margin-top: 0.5rem;">
-          <label class="form-label">7. สำเนา ปพ. ด้านหน้า (เลือกไฟล์จากเครื่อง หรือวางลิงก์ Drive)</label>
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="modal-file-url" class="form-control" style="flex: 1; min-width: 220px;" placeholder="วางลิงก์ Google Drive ด้านหน้า หรือเลือกไฟล์จากเครื่อง..." value="${student ? (student.file_url || '') : ''}">
-            
-            <input type="file" id="modal-local-file-input" accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
-            
-            <button type="button" id="upload-local-file-btn" class="btn btn-primary" style="white-space: nowrap;">
-              <i class="fa-solid fa-cloud-arrow-up"></i> เลือกไฟล์จากเครื่อง
-            </button>
-            <button type="button" id="scan-camera-modal-btn" class="btn btn-warning" style="white-space: nowrap;">
-              <i class="fa-solid fa-camera"></i> สแกน/ถ่ายภาพ
-            </button>
-            <button type="button" id="preview-file-modal-btn" class="btn btn-info" style="white-space: nowrap;">
-              <i class="fa-solid fa-eye"></i> ดูไฟล์ด้านหน้า
-            </button>
-          </div>
-          <small style="color: var(--text-muted); display: block; margin-top: 4px;">
-            <i class="fa-solid fa-cloud-arrow-up text-primary"></i> รองรับไฟล์ PDF, JPG, PNG — เลือกไฟล์จากเครื่องแล้วระบบจะอัปโหลดขึ้น Google Drive อัตโนมัติ
-          </small>
-        </div>
-
-        <div class="form-group" style="margin-top: 1rem;">
-          <label class="form-label">8. สำเนา ปพ. ด้านหลัง (ถ้ามี — เลือกไฟล์จากเครื่อง หรือวางลิงก์ Drive)</label>
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="modal-file-url-back" class="form-control" style="flex: 1; min-width: 220px;" placeholder="วางลิงก์ Google Drive ด้านหลัง (ถ้ามี)..." value="${student ? (student.file_url_back || '') : ''}">
-            
-            <input type="file" id="modal-local-file-input-back" accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
-            
-            <button type="button" id="upload-local-file-back-btn" class="btn btn-outline-primary" style="white-space: nowrap;">
-              <i class="fa-solid fa-cloud-arrow-up"></i> เลือกไฟล์ด้านหลัง
-            </button>
-            <button type="button" id="scan-camera-modal-back-btn" class="btn btn-outline-warning" style="white-space: nowrap;">
-              <i class="fa-solid fa-camera"></i> สแกน/ถ่ายภาพ
-            </button>
-            <button type="button" id="preview-file-back-modal-btn" class="btn btn-outline-info" style="white-space: nowrap;">
-              <i class="fa-solid fa-eye"></i> ดูไฟล์ด้านหลัง
-            </button>
-          </div>
-          <small style="color: var(--text-muted); display: block; margin-top: 4px;">
-            <i class="fa-solid fa-circle-info text-info"></i> หากมีเอกสาร ปพ. ด้านหลัง สามารถสแกน/เลือกไฟล์เพิ่มได้ (ถ้าไม่มีปล่อยว่างได้)
-          </small>
-        </div>
       </form>
     `;
 
@@ -474,8 +406,6 @@ const studentsView = {
           const lastName = document.getElementById('modal-last-name').value.trim();
           const gradeLevel = document.getElementById('modal-grade-level').value;
           const academicYear = document.getElementById('modal-academic-year').value.trim();
-          const fileUrl = document.getElementById('modal-file-url').value.trim() || 'assets/sample_porpor.pdf';
-          const fileUrlBack = document.getElementById('modal-file-url-back') ? document.getElementById('modal-file-url-back').value.trim() : '';
 
           if (!docNumber || !setNumber || !studentId || !firstName || !lastName) {
             window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน', 'danger');
@@ -498,9 +428,7 @@ const studentsView = {
                 first_name: firstName,
                 last_name: lastName,
                 grade_level: gradeLevel,
-                academic_year: academicYear,
-                file_url: fileUrl,
-                file_url_back: fileUrlBack
+                academic_year: academicYear
               };
               window.db.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${prefix}${firstName} ${lastName} (${studentId}) [เชื่อมเล่ม ${finalBookCode}]`);
             }
@@ -522,8 +450,8 @@ const studentsView = {
               room: '1',
               academic_year: academicYear,
               status: 'graduated',
-              file_url: fileUrl,
-              file_url_back: fileUrlBack
+              file_url: '',
+              file_url_back: ''
             };
             window.db.data.students.unshift(newObj);
             window.db.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียนใหม่ ${prefix}${firstName} ${lastName} (${studentId}) [เชื่อมเล่ม ${finalBookCode}]`);
@@ -545,8 +473,8 @@ const studentsView = {
             status: 'stored',
             location_code: selectedBookObj ? selectedBookObj.location_code : 'LOC-A01-01-01',
             file_name: `ปพ1_${studentId}.pdf`,
-            file_url: fileUrl,
-            file_url_back: fileUrlBack
+            file_url: '',
+            file_url_back: ''
           };
 
           if (docIdx !== -1) {
@@ -595,175 +523,6 @@ const studentsView = {
           }
         };
         if (bookSelect.value) bookSelect.onchange();
-      }
-
-      const prevBtn = document.getElementById('preview-file-modal-btn');
-      if (prevBtn) {
-        prevBtn.onclick = () => {
-          const url = document.getElementById('modal-file-url').value.trim() || 'assets/sample_porpor.pdf';
-          const stdId = document.getElementById('modal-student-id').value.trim() || 'NEW';
-          const stdName = document.getElementById('modal-first-name').value.trim();
-          window.utils.openFilePreviewModal(url, `สำเนา ปพ. (ด้านหน้า) - ${stdName}`, stdId);
-        };
-      }
-
-      const prevBackBtn = document.getElementById('preview-file-back-modal-btn');
-      if (prevBackBtn) {
-        prevBackBtn.onclick = () => {
-          const url = document.getElementById('modal-file-url-back').value.trim();
-          if (!url) {
-            window.utils.showToast('ยังไม่ได้แนบไฟล์สำเนา ปพ. ด้านหลัง', 'warning');
-            return;
-          }
-          const stdId = document.getElementById('modal-student-id').value.trim() || 'NEW';
-          const stdName = document.getElementById('modal-first-name').value.trim();
-          window.utils.openFilePreviewModal(url, `สำเนา ปพ. (ด้านหลัง) - ${stdName}`, stdId);
-        };
-      }
-
-      const uploadLocalBtn = document.getElementById('upload-local-file-btn');
-      const localFileInput = document.getElementById('modal-local-file-input');
-
-      const uploadLocalBackBtn = document.getElementById('upload-local-file-back-btn');
-      const localFileInputBack = document.getElementById('modal-local-file-input-back');
-
-      const getResolvedBookCode = () => {
-        const bookSelect = document.getElementById('modal-book-code');
-        const selectedVal = bookSelect ? bookSelect.value : '';
-        if (selectedVal && selectedVal !== 'CUSTOM') {
-          return selectedVal;
-        }
-        const setNumber = (document.getElementById('modal-set-number') ? document.getElementById('modal-set-number').value.trim() : '') || '01';
-        const academicYear = (document.getElementById('modal-academic-year') ? document.getElementById('modal-academic-year').value.trim() : '') || '2569';
-        return `BOOK-ปพ1-${academicYear}-${setNumber}`;
-      };
-
-      if (uploadLocalBtn && localFileInput) {
-        uploadLocalBtn.onclick = (e) => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          localFileInput.click();
-        };
-
-        localFileInput.onchange = async () => {
-          const file = localFileInput.files[0];
-          if (!file) return;
-
-          const inputEl = document.getElementById('modal-file-url');
-          const blobUrl = URL.createObjectURL(file);
-          if (inputEl) inputEl.value = blobUrl;
-
-          const bookCodeForUpload = getResolvedBookCode();
-          const stdId = document.getElementById('modal-student-id') ? document.getElementById('modal-student-id').value.trim() : 'STUDENT';
-
-          window.utils.showToast(`กำลังอัปโหลดไฟล์ด้านหน้า ${file.name} ลง Google Drive โฟลเดอร์ "${bookCodeForUpload}"...`, 'info');
-
-          try {
-            const driveUrl = await window.db.uploadScanFileToDrive(file, file.name, bookCodeForUpload);
-            if (driveUrl && inputEl) {
-              inputEl.value = driveUrl;
-              window.utils.showToast(`อัปโหลดไฟล์ด้านหน้า ${file.name} ลงโฟลเดอร์ "${bookCodeForUpload}" สำเร็จ!`, 'success');
-            } else {
-              window.utils.showToast(`แนบไฟล์ด้านหน้า ${file.name} เรียบร้อยแล้ว`, 'success');
-            }
-          } catch (err) {
-            console.warn('Upload file error:', err);
-            window.utils.showToast(`แนบไฟล์ ${file.name} สำเร็จ`, 'success');
-          }
-        };
-      }
-
-      if (uploadLocalBackBtn && localFileInputBack) {
-        uploadLocalBackBtn.onclick = (e) => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          localFileInputBack.click();
-        };
-
-        localFileInputBack.onchange = async () => {
-          const file = localFileInputBack.files[0];
-          if (!file) return;
-
-          const inputElBack = document.getElementById('modal-file-url-back');
-          const blobUrl = URL.createObjectURL(file);
-          if (inputElBack) inputElBack.value = blobUrl;
-
-          const bookCodeForUpload = getResolvedBookCode();
-          const stdId = document.getElementById('modal-student-id') ? document.getElementById('modal-student-id').value.trim() : 'STUDENT';
-
-          window.utils.showToast(`กำลังอัปโหลดไฟล์ด้านหลัง ${file.name} ลง Google Drive โฟลเดอร์ "${bookCodeForUpload}"...`, 'info');
-
-          try {
-            const driveUrl = await window.db.uploadScanFileToDrive(file, `Back_${file.name}`, bookCodeForUpload);
-            if (driveUrl && inputElBack) {
-              inputElBack.value = driveUrl;
-              window.utils.showToast(`อัปโหลดไฟล์ด้านหลัง ${file.name} ลงโฟลเดอร์ "${bookCodeForUpload}" สำเร็จ!`, 'success');
-            } else {
-              window.utils.showToast(`แนบไฟล์ด้านหลัง ${file.name} เรียบร้อยแล้ว`, 'success');
-            }
-          } catch (err) {
-            console.warn('Upload back file error:', err);
-            window.utils.showToast(`แนบไฟล์ด้านหลัง ${file.name} สำเร็จ`, 'success');
-          }
-        };
-      }
-
-      const camBtn = document.getElementById('scan-camera-modal-btn');
-      if (camBtn) {
-        camBtn.onclick = (e) => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          window.utils.openLiveCameraModal(async (capturedFile) => {
-            const blobUrl = URL.createObjectURL(capturedFile);
-            const inputEl = document.getElementById('modal-file-url');
-            if (inputEl) inputEl.value = blobUrl;
-
-            const bookCodeForUpload = getResolvedBookCode();
-            const stdId = document.getElementById('modal-student-id') ? document.getElementById('modal-student-id').value.trim() : 'STUDENT';
-            
-            window.utils.showToast(`กำลังอัปโหลดรูปถ่ายด้านหน้าลง Google Drive โฟลเดอร์ "${bookCodeForUpload}"...`, 'info');
-            const driveUrl = await window.db.uploadScanFileToDrive(capturedFile, `Scan_Camera_Front_${stdId}_${Date.now()}.png`, bookCodeForUpload);
-            if (driveUrl && inputEl) {
-              inputEl.value = driveUrl;
-              window.utils.showToast(`อัปโหลดรูปถ่ายด้านหน้าลงโฟลเดอร์ "${bookCodeForUpload}" สำเร็จ!`, 'success');
-            } else {
-              window.utils.showToast('สแกน/แนบไฟล์ภาพถ่ายเรียบร้อยแล้ว', 'success');
-            }
-          });
-        };
-      }
-
-      const camBackBtn = document.getElementById('scan-camera-modal-back-btn');
-      if (camBackBtn) {
-        camBackBtn.onclick = (e) => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          window.utils.openLiveCameraModal(async (capturedFile) => {
-            const blobUrl = URL.createObjectURL(capturedFile);
-            const inputElBack = document.getElementById('modal-file-url-back');
-            if (inputElBack) inputElBack.value = blobUrl;
-
-            const bookCodeForUpload = getResolvedBookCode();
-            const stdId = document.getElementById('modal-student-id') ? document.getElementById('modal-student-id').value.trim() : 'STUDENT';
-            
-            window.utils.showToast(`กำลังอัปโหลดรูปถ่ายด้านหลังลง Google Drive โฟลเดอร์ "${bookCodeForUpload}"...`, 'info');
-            const driveUrl = await window.db.uploadScanFileToDrive(capturedFile, `Scan_Camera_Back_${stdId}_${Date.now()}.png`, bookCodeForUpload);
-            if (driveUrl && inputElBack) {
-              inputElBack.value = driveUrl;
-              window.utils.showToast(`อัปโหลดรูปถ่ายด้านหลังลงโฟลเดอร์ "${bookCodeForUpload}" เรียบร้อย!`, 'success');
-            } else {
-              window.utils.showToast('สแกน/แนบไฟล์ภาพถ่ายด้านหลังเรียบร้อยแล้ว', 'success');
-            }
-          });
-        };
       }
     }, 100);
   }

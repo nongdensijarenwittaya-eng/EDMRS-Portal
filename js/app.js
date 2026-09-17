@@ -4,11 +4,21 @@
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Always auto-fetch database & settings from Google Sheets on app load (even on login screen)
-  autoFetchFromGoogleSheets(false);
+  const isAuthenticated = window.authSystem && window.authSystem.isAuthenticated();
+  const alreadyLoaded = sessionStorage.getItem('has_loaded_initial') === 'true' || window._initialAppLoaded;
+
+  // Show loading modal ONLY BEFORE entering dashboard on initial app load when authenticated
+  if (isAuthenticated && !alreadyLoaded) {
+    window._initialAppLoaded = true;
+    sessionStorage.setItem('has_loaded_initial', 'true');
+    autoFetchFromGoogleSheets(false);
+  } else {
+    // Silent background sync
+    autoFetchFromGoogleSheets(true);
+  }
 
   // Check if authenticated
-  if (window.authSystem && window.authSystem.isAuthenticated()) {
+  if (isAuthenticated) {
     initAppShell();
   }
 
@@ -126,48 +136,12 @@ function initAppShell() {
   if (logoutBtn) logoutBtn.onclick = () => window.authSystem.logout();
   if (dropdownLogoutBtn) dropdownLogoutBtn.onclick = () => window.authSystem.logout();
 
-  // Quick Camera Scan Button in Topbar
-  const quickScanBtn = document.getElementById('quick-scan-btn');
-  if (quickScanBtn) {
-    quickScanBtn.onclick = () => {
-      window.location.hash = '#qr-scanner';
-    };
-  }
-
-  // Scanner Modal Close Button
-  const scannerCloseBtn = document.getElementById('scanner-modal-close-btn');
-  const scannerContainer = document.getElementById('scanner-modal-container');
-  if (scannerCloseBtn && scannerContainer) {
-    scannerCloseBtn.onclick = () => scannerContainer.classList.remove('show');
-    scannerContainer.onclick = (e) => {
-      if (e.target === scannerContainer) scannerContainer.classList.remove('show');
-    };
-  }
 
   // Fetch All Real Data from Google Sheets
   const fetchSheetsBtn = document.getElementById('fetch-sheets-data-btn');
   if (fetchSheetsBtn) {
-    fetchSheetsBtn.onclick = async () => {
-      try {
-        if (window.utils && window.utils.showLoadingModal) {
-          window.utils.showLoadingModal(
-            'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
-            'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>'
-          );
-          if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(40);
-        }
-        const counts = await window.db.syncFromGoogleSheets();
-        if (window.utils && window.utils.updateLoadingModalProgress) {
-          window.utils.updateLoadingModalProgress(100, 'ดึงข้อมูลสำเร็จ!', `โหลดนักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ, เล่ม ${counts.bookCount} เล่ม`);
-        }
-        setTimeout(() => {
-          if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
-          if (window.router) window.router.handleRoute();
-        }, 500);
-      } catch (err) {
-        if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
-        window.utils.showToast(`ไม่สามารถดึงข้อมูลได้: ${err.message}`, 'danger', 5000);
-      }
+    fetchSheetsBtn.onclick = () => {
+      autoFetchFromGoogleSheets(false);
     };
   }
 
@@ -242,24 +216,40 @@ function autoFetchFromGoogleSheets(silent = false) {
 
   if (!silent) {
     console.log('Auto-fetching database from Google Sheets & Drive...');
+    if (window.utils && window.utils.showLoadingModal) {
+      window.utils.showLoadingModal(
+        'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
+        'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>'
+      );
+      if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(40);
+    }
   }
 
   window.db.syncFromGoogleSheets(sheetsUrl).then(counts => {
-    const hasChanged = (counts.studentCount !== currentStudentCount || counts.docCount !== currentDocCount);
+    const hasChanged = counts.dataChanged || (counts.studentCount !== currentStudentCount || counts.docCount !== currentDocCount);
     if (!silent) {
       console.log('Auto fetched from Google Sheets successfully:', counts);
-      if (currentStudentCount === 0 && window.utils && window.utils.showToast) {
-        window.utils.showToast(`⚡ ซิงก์ดึงข้อมูลจริงจาก Google Sheets & Drive อัตโนมัติสำเร็จ (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร)`, 'success', 3500);
+      if (window.utils && window.utils.updateLoadingModalProgress) {
+        window.utils.updateLoadingModalProgress(100, 'ดึงข้อมูลสำเร็จ!', `โหลดนักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ, เล่ม ${counts.bookCount} เล่ม`);
       }
+      setTimeout(() => {
+        if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
+      }, 500);
     }
-    // Auto-update UI if data changed or initial fetch
+    // Auto-update UI if any cell/data changed in Google Sheets or on initial fetch
     if (hasChanged || (!silent && currentStudentCount === 0)) {
       if (window.router && typeof window.router.handleRoute === 'function') {
         window.router.handleRoute();
       }
     }
   }).catch(err => {
-    if (!silent) console.warn('Auto fetch from Google Sheets skipped:', err.message);
+    if (!silent) {
+      console.warn('Auto fetch from Google Sheets skipped:', err.message);
+      if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
+      if (window.utils && window.utils.showToast) {
+        window.utils.showToast(`ไม่สามารถดึงข้อมูลได้: ${err.message}`, 'danger', 5000);
+      }
+    }
   });
 }
 window.autoFetchFromGoogleSheets = autoFetchFromGoogleSheets;

@@ -246,14 +246,9 @@ const dashboardView = {
     const dashFetchBtn = document.getElementById('dash-fetch-sheets-btn');
 
     if (dashFetchBtn) {
-      dashFetchBtn.onclick = async () => {
-        try {
-          window.utils.showToast('กำลังเชื่อมต่อดึงข้อมูลทั้งหมดจาก Google Sheets...', 'info');
-          const counts = await window.db.syncFromGoogleSheets();
-          window.utils.showToast(`ดึงฐานข้อมูลจริงจาก Google Sheets สำเร็จ! (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร, ${counts.bookCount} เล่ม)`, 'success', 5000);
-          this.refreshDashboard();
-        } catch (err) {
-          window.utils.showToast(`ดึงข้อมูลไม่สำเร็จ: ${err.message}`, 'danger', 5000);
+      dashFetchBtn.onclick = () => {
+        if (typeof window.autoFetchFromGoogleSheets === 'function') {
+          window.autoFetchFromGoogleSheets(false);
         }
       };
     }

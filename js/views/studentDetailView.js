@@ -124,9 +124,6 @@ const studentDetailView = {
                         <a href="#locations" class="btn btn-secondary btn-sm" title="ดูสถานที่จัดเก็บ">
                           <i class="fa-solid fa-boxes-stacked"></i> ดูสถานที่
                         </a>
-                        <button class="btn btn-light btn-sm view-file-btn" data-file="${d.file_name}" data-code="${d.doc_code}" data-url="${d.file_url || ''}" title="ดูไฟล์สแกนดิจิทัล">
-                          ${window.utils.isDriveUrl(d.file_url) ? '<i class="fa-brands fa-google-drive text-success" style="font-size: 1.1rem;"></i> เปิดใน Drive' : '<i class="fa-solid fa-file-pdf text-danger"></i> ไฟล์ PDF'}
-                        </button>
                         <button class="btn btn-warning btn-sm edit-doc-detail-btn" data-id="${d.id}" title="แก้ไขเอกสาร">
                           <i class="fa-solid fa-pen-to-square"></i>
                         </button>
@@ -247,16 +244,7 @@ const studentDetailView = {
       };
     });
 
-    document.querySelectorAll('.view-file-btn').forEach(btn => {
-      btn.onclick = () => {
-        const file = btn.getAttribute('data-file');
-        const code = btn.getAttribute('data-code');
-        const url = btn.getAttribute('data-url');
-        const doc = (window.db.data.documents || []).find(d => d.doc_code === code);
-        const urlBack = doc ? doc.file_url_back : '';
-        window.utils.openFilePreviewModal(url, file, code, urlBack);
-      };
-    });
+
   }
 };
 

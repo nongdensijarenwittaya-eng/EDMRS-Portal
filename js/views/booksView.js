@@ -294,7 +294,7 @@ const booksView = {
             <div class="table-responsive">
               <table class="data-table">
                 <thead>
-                  <tr><th>ลำดับ</th><th>รหัสเอกสาร</th><th>รหัสนักเรียน</th><th>ชื่อ-นามสกุล</th><th>เลขที่</th><th>สำเนา ปพ.</th><th>สถานะ</th><th style="text-align: center;">จัดการ</th></tr>
+                  <tr><th>ลำดับ</th><th>รหัสเอกสาร</th><th>รหัสนักเรียน</th><th>ชื่อ-นามสกุล</th><th>เลขที่</th><th>สถานะ</th><th style="text-align: center;">จัดการ</th></tr>
                 </thead>
                 <tbody>
                   ${enclosedDocs.length ? enclosedDocs.map((d, i) => `
@@ -304,11 +304,6 @@ const booksView = {
                       <td><code>${d.student_id}</code></td>
                       <td><a href="#student-detail?id=${d.student_id}" style="font-weight: 500;">${d.student_name}</a></td>
                       <td>${d.doc_number}</td>
-                      <td>
-                        <button class="btn btn-light btn-sm preview-book-doc-btn" data-url="${d.file_url || 'https://drive.google.com/file/d/1SIu3JfivV9RnCOW2xkzb30x_A16q0MGU/view?usp=sharing'}" data-name="${d.student_name}" data-code="${d.student_id}">
-                          <i class="fa-solid fa-eye text-primary"></i> ดูไฟล์
-                        </button>
-                      </td>
                       <td>${window.utils.getStatusBadge(d.status)}</td>
                       <td style="text-align: center;">
                         <div style="display: flex; gap: 0.35rem; justify-content: center;">
@@ -322,7 +317,7 @@ const booksView = {
                       </td>
                     </tr>
                   `).join('') : `
-                    <tr><td colspan="8" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">ยังไม่มีนักเรียนหรือเอกสารผูกกับเล่มนี้</td></tr>
+                    <tr><td colspan="7" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">ยังไม่มีนักเรียนหรือเอกสารผูกกับเล่มนี้</td></tr>
                   `}
                 </tbody>
               </table>
@@ -354,16 +349,7 @@ const booksView = {
             };
           }
 
-          document.querySelectorAll('.preview-book-doc-btn').forEach(b => {
-            b.onclick = () => {
-              const url = b.getAttribute('data-url');
-              const name = b.getAttribute('data-name');
-              const code = b.getAttribute('data-code');
-              const doc = (window.db.data.documents || []).find(d => d.student_id === code || d.doc_code === code);
-              const urlBack = doc ? doc.file_url_back : '';
-              window.utils.openFilePreviewModal(url, `สำเนา ปพ. - ${name}`, code, urlBack);
-            };
-          });
+
 
           // Edit Document / Student inside Book Detail Modal
           document.querySelectorAll('.edit-book-doc-btn').forEach(b => {

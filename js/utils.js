@@ -85,6 +85,12 @@ const utils = {
 
   // Cloud Loading Sync Modal Overlay
   showLoadingModal(title = 'กำลังเชื่อมต่อและโหลดข้อมูลสด...', subtitle = 'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>') {
+    if (this._loadingTicker) {
+      clearInterval(this._loadingTicker);
+      this._loadingTicker = null;
+    }
+    this._currentProgress = 15;
+
     let overlay = document.getElementById('cloud-loading-modal-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -95,9 +101,9 @@ const utils = {
         left: 0;
         width: 100vw;
         height: 100vh;
-        background: rgba(15, 23, 42, 0.7);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         z-index: 99999;
         display: flex;
         align-items: center;
@@ -153,18 +159,20 @@ const utils = {
 
         <div style="
           width: 100%;
-          height: 8px;
+          height: 10px;
           background: #e2e8f0;
           border-radius: 10px;
           overflow: hidden;
           position: relative;
         ">
           <div id="cloud-loading-progress-bar" style="
-            width: 25%;
+            width: 15%;
             height: 100%;
-            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 75%, #2563eb 100%);
+            background-size: 200% 100%;
             border-radius: 10px;
-            transition: width 0.4s ease;
+            transition: width 0.3s ease;
+            animation: shimmerProgress 1.5s infinite linear;
           "></div>
         </div>
       </div>
@@ -172,6 +180,10 @@ const utils = {
         @keyframes pulseCloud {
           0%, 100% { transform: scale(1); box-shadow: 0 12px 25px rgba(37, 99, 235, 0.35); }
           50% { transform: scale(1.06); box-shadow: 0 16px 30px rgba(37, 99, 235, 0.5); }
+        }
+        @keyframes shimmerProgress {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
       </style>
     `;
@@ -182,9 +194,23 @@ const utils = {
       const card = overlay.firstElementChild;
       if (card) card.style.transform = 'scale(1)';
     });
+
+    // Continuously tick progress bar up to 90% while fetching data
+    this._loadingTicker = setInterval(() => {
+      if (this._currentProgress < 90) {
+        this._currentProgress += (90 - this._currentProgress) * 0.12;
+        const bar = document.getElementById('cloud-loading-progress-bar');
+        if (bar) bar.style.width = `${Math.min(90, Math.round(this._currentProgress))}%`;
+      }
+    }, 180);
   },
 
   updateLoadingModalProgress(percent, title, subtitle) {
+    if (percent >= 100 && this._loadingTicker) {
+      clearInterval(this._loadingTicker);
+      this._loadingTicker = null;
+    }
+    this._currentProgress = percent;
     const bar = document.getElementById('cloud-loading-progress-bar');
     if (bar) bar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
     
@@ -199,6 +225,10 @@ const utils = {
   },
 
   hideLoadingModal() {
+    if (this._loadingTicker) {
+      clearInterval(this._loadingTicker);
+      this._loadingTicker = null;
+    }
     const overlay = document.getElementById('cloud-loading-modal-overlay');
     if (overlay) {
       overlay.style.opacity = '0';
@@ -266,22 +296,116 @@ const utils = {
     }
   },
 
-  // Barcode Renderer
-  generateBarcode(svgId, code) {
+  // Barcode Renderer with fallback for Unicode/Thai text & offline SVG rendering
+  generateBarcode(target, code, options = {}) {
+    if (!target) return;
+    const cleanCode = String(code || '').trim();
+    if (!cleanCode) return;
+
+    let el = typeof target === 'string'
+      ? (document.getElementById(target) || document.getElementById(target.replace(/^#/, '')) || document.querySelector(target.startsWith('#') ? target : `#${target}`))
+      : target;
+
+    if (!el) return;
+
+    // Convert Thai/Unicode text to ASCII safe string for CODE128 barcode
+    let barcodeText = cleanCode;
+    if (/[^\x00-\x7F]/.test(barcodeText)) {
+      try {
+        const b64 = btoa(encodeURIComponent(barcodeText)).replace(/=/g, '');
+        barcodeText = 'EDM-' + b64.substring(0, 16);
+      } catch (e) {
+        barcodeText = 'EDM-' + Math.abs(this.hashCode(cleanCode));
+      }
+    }
+
+    const width = options.width || 1.8;
+    const height = options.height || 45;
+    const displayValue = options.displayValue !== false;
+    const labelText = options.text || (cleanCode.length > 28 ? cleanCode.substring(0, 28) + '...' : cleanCode);
+
+    // Try JsBarcode library if available
     if (window.JsBarcode) {
       try {
-        JsBarcode(`#${svgId}`, code, {
-          format: "CODE128",
-          width: 1.8,
-          height: 45,
-          displayValue: true,
+        JsBarcode(el, barcodeText, {
+          format: options.format || "CODE128",
+          width: width,
+          height: height,
+          displayValue: displayValue,
+          text: displayValue ? labelText : '',
           font: "Kanit",
-          fontSize: 12,
-          margin: 5
+          fontSize: options.fontSize || 12,
+          margin: options.margin || 6,
+          lineColor: options.lineColor || "#0f172a",
+          background: options.background || "#ffffff"
         });
-      } catch (e) {
-        console.warn('Barcode render warning:', e);
+        return;
+      } catch (err) {
+        console.warn('JsBarcode render warning, switching to fallback SVG barcode generator:', err);
       }
+    }
+
+    // Built-in Pure SVG Barcode Fallback Renderer
+    this.renderFallbackBarcodeSvg(el, labelText, barcodeText, height);
+  },
+
+  hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return hash;
+  },
+
+  renderFallbackBarcodeSvg(el, displayText, barcodeText, height = 45) {
+    const bars = [];
+    const hashStr = barcodeText + Math.abs(this.hashCode(barcodeText));
+    
+    let currentX = 10;
+    bars.push(`<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>`);
+    
+    // Start guard bars
+    bars.push(`<rect x="${currentX}" y="4" width="2" height="${height}" fill="#0f172a"/>`);
+    currentX += 3;
+    bars.push(`<rect x="${currentX}" y="4" width="1" height="${height}" fill="#0f172a"/>`);
+    currentX += 3;
+
+    for (let i = 0; i < hashStr.length; i++) {
+      const c = hashStr.charCodeAt(i);
+      const w1 = (c % 3) + 1;
+      const w2 = ((c >> 1) % 3) + 1;
+      const gap = ((c >> 2) % 3) + 1;
+
+      bars.push(`<rect x="${currentX}" y="4" width="${w1}" height="${height}" fill="#0f172a"/>`);
+      currentX += w1 + gap;
+      bars.push(`<rect x="${currentX}" y="4" width="${w2}" height="${height}" fill="#0f172a"/>`);
+      currentX += w2 + gap;
+    }
+
+    // End guard bars
+    bars.push(`<rect x="${currentX}" y="4" width="2" height="${height}" fill="#0f172a"/>`);
+    currentX += 3;
+    bars.push(`<rect x="${currentX}" y="4" width="1" height="${height}" fill="#0f172a"/>`);
+    currentX += 10;
+
+    const svgWidth = Math.max(currentX, 160);
+    const svgHeight = height + 24;
+
+    const svgInner = `
+      ${bars.join('')}
+      <text x="${svgWidth / 2}" y="${height + 17}" text-anchor="middle" font-family="Kanit, sans-serif" font-size="12" font-weight="500" fill="#0f172a">${displayText}</text>
+    `;
+
+    if (el.tagName && el.tagName.toLowerCase() === 'svg') {
+      el.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+      el.setAttribute('width', svgWidth);
+      el.setAttribute('height', svgHeight);
+      el.style.maxWidth = '100%';
+      el.style.height = 'auto';
+      el.innerHTML = svgInner;
+    } else {
+      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${svgHeight}" width="${svgWidth}" height="${svgHeight}" style="max-width: 100%; height: auto;">${svgInner}</svg>`;
     }
   },
 

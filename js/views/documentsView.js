@@ -115,7 +115,7 @@ const documentsView = {
                 <th>เล่มที่ / เลขที่</th>
                 <th>สถานะ</th>
                 <th>Location Code</th>
-                <th style="text-align: center;">จัดการ / ไฟล์</th>
+                <th style="text-align: center;">จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -132,9 +132,6 @@ const documentsView = {
                       <a href="#locations" class="btn btn-secondary btn-sm" title="สถานที่จัดเก็บ">
                         <i class="fa-solid fa-boxes-stacked"></i>
                       </a>
-                      <button class="btn btn-light btn-sm preview-doc-pdf-btn" data-file="${d.file_name}" data-code="${d.doc_code}" data-url="${d.file_url || ''}" title="ดูไฟล์ดิจิทัล (Drive/PDF/JPG)">
-                        ${window.utils.isDriveUrl(d.file_url) ? '<i class="fa-brands fa-google-drive text-success" style="font-size: 1.1rem;"></i>' : '<i class="fa-solid fa-file-pdf text-danger"></i>'}
-                      </button>
                       ${canEdit ? `
                         <button class="btn btn-warning btn-sm edit-doc-btn" data-id="${d.id}" title="แก้ไขเอกสาร">
                           <i class="fa-solid fa-pen-to-square"></i>
@@ -203,23 +200,11 @@ const documentsView = {
           'เล่มที่': d.book_number,
           'เลขที่': d.doc_number,
           'สถานะ': d.status,
-          'Location Code': d.location_code,
-          'Google Drive Link': d.file_url || ''
+          'Location Code': d.location_code
         }));
         window.utils.exportToExcel('ทะเบียนเอกสาร_ปพ', 'Documents', exportData);
       };
     }
-
-    document.querySelectorAll('.preview-doc-pdf-btn').forEach(btn => {
-      btn.onclick = () => {
-        const file = btn.getAttribute('data-file');
-        const code = btn.getAttribute('data-code');
-        const url = btn.getAttribute('data-url');
-        const doc = (window.db.data.documents || []).find(d => d.doc_code === code);
-        const urlBack = doc ? doc.file_url_back : '';
-        window.utils.openFilePreviewModal(url, file, code, urlBack);
-      };
-    });
 
     document.querySelectorAll('.edit-doc-btn').forEach(btn => {
       btn.onclick = () => {
