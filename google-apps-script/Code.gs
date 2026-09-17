@@ -162,26 +162,19 @@ function recordDeletedKeys(deletedKeysObj) {
 /**
  * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
  */
+/**
+ * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
+ */
 function doGet(e) {
-  var lock = LockService.getScriptLock();
-  var hasLock = false;
-  try {
-    hasLock = lock.waitLock(15000); // 15-second lock for safe concurrent reads
-  } catch (lErr) {
-    console.warn("Read lock wait warning:", lErr);
-  }
-
   try {
     e = e || { parameter: {} };
     var parameter = e.parameter || {};
     var action = parameter.action || "ping";
     
     if (action === "ping") {
-      initSheetsStructure();
-      SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "EDMRS Google Apps Script Web App API is Active & Lock Protected!",
+        message: "EDMRS Google Apps Script Web App API is Active!",
         timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }
@@ -196,7 +189,6 @@ function doGet(e) {
     }
     
     if (action === "get_all") {
-      SpreadsheetApp.flush();
       var data = getAllSheetData();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
@@ -211,23 +203,18 @@ function doGet(e) {
       status: "error",
       message: error.toString()
     })).setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    if (hasLock) {
-      try { lock.releaseLock(); } catch (e) {}
-    }
   }
 }
 
 /**
- * HTTP POST Request Handler - สำหรับบันทึก/ซิงก์ข้อมูล และอัปโหลดไฟล์ไปที่ Google Drive Albums
+ * HTTP POST Request Handler - สำหรับบันทึก/ซิงก์ข้อมูล
  * พร้อมระบบ Script Lock ป้องกันการเขียนทับข้อมูลเมื่อใช้งานหลายเครื่องพร้อมกัน
  */
 function doPost(e) {
   var lock = LockService.getScriptLock();
   var hasLock = false;
   try {
-    // รอรับสิทธิ์ล็อกสูงสุด 30 วินาที เพื่อป้องกันการบันทึกชนกันจากหลายอุปกรณ์พร้อมกัน
-    hasLock = lock.waitLock(30000);
+    hasLock = lock.waitLock(10000);
     if (!hasLock) {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
@@ -257,14 +244,11 @@ function doPost(e) {
     }
 
     if (action === "sync_database") {
-      // 1. ตรวจสอบโครงสร้างตาราง
       initSheetsStructure();
 
-      // 2. บันทึกรายการคีย์ที่ถูกลบลงชีท Deleted_Keys เพื่อป้องกันข้อมูลเก่าฟื้นคืน
       var deletedKeys = contents.deleted_keys || {};
       recordDeletedKeys(deletedKeys);
 
-      // 3. ซิงก์ข้อมูลรวมแบบ Differential Concurrency Merge ป้องกันข้อมูลหาย
       syncUsersSheet(contents.users || [], deletedKeys.users || []);
       syncStudentsSheet(contents.students || [], deletedKeys.students || []);
       syncDocumentsSheet(contents.documents || [], deletedKeys.documents || []);
@@ -273,16 +257,11 @@ function doPost(e) {
       syncStorageLocationsSheet(contents.storage_locations || [], deletedKeys.storage_locations || []);
       syncSettingsSheet(contents.settings || {});
       
-      // 4. บังคับบันทึกการเปลี่ยนแปลงลง Google Sheets ทันที
       SpreadsheetApp.flush();
-
-      // 4. อ่านฐานข้อมูลฉบับสมบูรณ์ล่าสุดส่งกลับไปยังเครื่องที่บันทึก
-      var updatedData = getAllSheetData();
 
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        message: "Synchronized database with Lock Protection & Smart Differential Merge successfully!",
-        data: updatedData,
+        message: "Synchronized database with Google Sheets successfully!",
         timestamp: new Date().toISOString()
       })).setMimeType(ContentService.MimeType.JSON);
     }
@@ -914,17 +893,7 @@ function getAllSheetData() {
   
   sheets.forEach(function(sh) {
     var name = sh.getName();
-    var values = sh.getDataRange().getValues();
-    var formulas = sh.getDataRange().getFormulas();
-    
-    for (var r = 0; r < values.length; r++) {
-      for (var c = 0; c < values[r].length; c++) {
-        if (formulas[r] && formulas[r][c] && formulas[r][c].indexOf("HYPERLINK") !== -1) {
-          values[r][c] = formulas[r][c];
-        }
-      }
-    }
-    result[name] = values;
+    result[name] = sh.getDataRange().getValues();
   });
   
   return result;

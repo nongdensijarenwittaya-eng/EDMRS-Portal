@@ -7,6 +7,8 @@ const DB_STORAGE_KEY = 'EDMRS_RELATIONAL_DB_V2.5';
 
 class RelationalDatabase {
   constructor() {
+    this.isSyncing = false;
+    this.hasPendingSync = false;
     this.data = {
       users: [],
       roles: [],
@@ -136,13 +138,15 @@ class RelationalDatabase {
     this._syncTimeout = setTimeout(() => {
       const sheetsUrl = this.data.settings && this.data.settings.sheets_url;
       if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
-        this.syncToGoogleSheets().then(() => {
-          console.log('Auto-synced latest database to Google Sheets successfully');
+        this.syncToGoogleSheets().then(res => {
+          if (res && res.status !== 'queued') {
+            console.log('Auto-synced latest database to Google Sheets successfully');
+          }
         }).catch(err => {
           console.warn('Auto sync to Google Sheets background attempt:', err.message);
         });
       }
-    }, 300);
+    }, 1200);
   }
 
   resetToSeed() {
@@ -868,53 +872,60 @@ class RelationalDatabase {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
     }
 
-    const payload = {
-      action: 'sync_database',
-      users: this.data.users || [],
-      students: this.data.students || [],
-      documents: this.data.documents || [],
-      books: this.data.books || [],
-      loans: this.data.loans || [],
-      storage_locations: this.data.storage_locations || [],
-      settings: this.data.settings || {},
-      deleted_keys: this.data.deleted_keys || {}
-    };
+    if (this.isSyncing) {
+      this.hasPendingSync = true;
+      return { status: 'queued', message: 'มีกระบวนการซิงก์ทำงานอยู่แล้ว ได้เข้าคิวข้อมูลล่าสุดไว้เรียบร้อย' };
+    }
 
-    let res;
+    this.isSyncing = true;
+
     try {
-      res = await fetch(sheetsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-    } catch (fetchErr) {
-      throw new Error(
-        'เชื่อมต่อส่งข้อมูลไป Google Sheets ไม่สำเร็จ (Failed to fetch)\n' +
-        '📍 กรุณาตรวจสอบว่าใน Apps Script ได้ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)'
-      );
-    }
+      const payload = {
+        action: 'sync_database',
+        users: this.data.users || [],
+        students: this.data.students || [],
+        documents: this.data.documents || [],
+        books: this.data.books || [],
+        loans: this.data.loans || [],
+        storage_locations: this.data.storage_locations || [],
+        settings: this.data.settings || {},
+        deleted_keys: this.data.deleted_keys || {}
+      };
 
-    if (!res.ok) throw new Error(`HTTP Error status: ${res.status}`);
-    let json;
-    try {
-      json = await res.json();
-    } catch (e) {
-      throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
-    }
+      let res;
+      try {
+        res = await fetch(sheetsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+      } catch (fetchErr) {
+        throw new Error(
+          'เชื่อมต่อส่งข้อมูลไป Google Sheets ไม่สำเร็จ (Failed to fetch)\n' +
+          '📍 กรุณาตรวจสอบว่าใน Apps Script ได้ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)'
+        );
+      }
 
-    if (json.status !== 'success') {
-      throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
-    }
+      if (!res.ok) throw new Error(`HTTP Error status: ${res.status}`);
+      let json;
+      try {
+        json = await res.json();
+      } catch (e) {
+        throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
+      }
 
-    // Auto-fetch fresh merged database from Google Sheets to ensure local data is 100% in sync
-    try {
-      await this.syncFromGoogleSheets(sheetsUrl);
-    } catch (syncBackErr) {
-      console.warn('Auto sync-back warning:', syncBackErr);
-    }
+      if (json.status !== 'success') {
+        throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
+      }
 
-    this.addAuditLog('Google Sheets', 'ซิงก์ฐานข้อมูลไป Google Sheets', 'อัปเดตข้อมูลนักเรียน เอกสาร เล่ม และยืม-คืน ลง Google Sheets เรียบร้อย');
-    return json;
+      return json;
+    } finally {
+      this.isSyncing = false;
+      if (this.hasPendingSync) {
+        this.hasPendingSync = false;
+        setTimeout(() => this.triggerAutoSyncToSheets(), 500);
+      }
+    }
   }
 
   // Upload Camera Captured Photo or Scanner File to Google Drive Album via Apps Script API (Disabled per user requirement)
@@ -926,7 +937,7 @@ class RelationalDatabase {
   addAuditLog(moduleName, actionName, description) {
     const user = window.authSystem ? window.authSystem.getCurrentUser() : { username: 'system', name: 'System' };
     const newLog = {
-      id: this.data.audit_logs.length + 1,
+      id: (this.data.audit_logs || []).length + 1,
       timestamp: new Date().toLocaleString('th-TH'),
       username: user ? user.username : 'guest',
       user_fullname: user ? `${user.title || ''}${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Guest User',
@@ -935,8 +946,12 @@ class RelationalDatabase {
       description: description,
       ip_address: '127.0.0.1'
     };
+    if (!this.data.audit_logs) this.data.audit_logs = [];
     this.data.audit_logs.unshift(newLog);
-    this.save();
+    if (this.data.audit_logs.length > 100) {
+      this.data.audit_logs = this.data.audit_logs.slice(0, 100);
+    }
+    this.save(false);
   }
 }
 
