@@ -48,17 +48,17 @@ class AuthSystem {
 
     let user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
 
-    const sheetsUrl = window.db && window.db.data && window.db.data.settings && window.db.data.settings.sheets_url;
+    const sheetsUrl = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
     if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
       if (!user) {
         // Uncached account: perform a live fetch from Google Sheets with 4s timeout
         try {
           await Promise.race([
             window.db.syncFromGoogleSheets(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 4000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 5000))
           ]);
         } catch (sErr) {
-          console.warn('Live sync attempt on login:', sErr.message);
+          // Silent fallback to local cache
         }
         user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
       } else {
