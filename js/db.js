@@ -4,10 +4,10 @@
    ========================================================================== */
 
 const DB_STORAGE_KEY = 'EDMRS_RELATIONAL_DB_V2.5';
-const DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
 
 class RelationalDatabase {
   constructor() {
+    this.googleSyncDisabled = false;
     this.DATA_SOURCE = {
       LOCAL: 'local',
       GOOGLE: 'google',
@@ -27,7 +27,7 @@ class RelationalDatabase {
     this.fetchPromise = null;
     this.initializationPromise = null;
 
-    console.log('[DB] Initializing...');
+    console.log('[DB] Initializing database engine...');
 
     this.data = {
       users: [],
@@ -57,6 +57,7 @@ class RelationalDatabase {
   }
 
   init() {
+    const defaultUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
     const local = localStorage.getItem(DB_STORAGE_KEY);
     if (local) {
       try {
@@ -64,7 +65,9 @@ class RelationalDatabase {
         if (parsed && typeof parsed === 'object') {
           this.data = { ...this.data, ...parsed };
           if (!this.data.settings) this.data.settings = {};
-          this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
+          if (!this.data.settings.sheets_url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(this.data.settings.sheets_url))) {
+            this.data.settings.sheets_url = defaultUrl;
+          }
           if (!this.data.users || this.data.users.length === 0) this.seedUsers();
           if (!this.data.students || this.data.students.length === 0) this.seedStudents();
           if (!this.data.documents || this.data.documents.length === 0) this.seedDocuments();
@@ -78,7 +81,7 @@ class RelationalDatabase {
     }
     this.seedDefaultData();
     if (!this.data.settings) this.data.settings = {};
-    this.data.settings.sheets_url = DEFAULT_SHEETS_URL;
+    this.data.settings.sheets_url = defaultUrl;
   }
 
   isJunkText(str) {
@@ -166,11 +169,15 @@ class RelationalDatabase {
   }
 
   triggerAutoSyncToSheets(immediate = true) {
+    if (this.googleSyncDisabled) {
+      console.warn('[DB] Auto sync skipped: Google Sheets sync is currently disabled due to 404 or invalid Web App URL.');
+      return;
+    }
     if (this._syncTimeout) clearTimeout(this._syncTimeout);
     const delay = immediate ? 50 : 1200;
     this._syncTimeout = setTimeout(() => {
-      const sheetsUrl = (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
-      if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
+      const sheetsUrl = (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+      if (sheetsUrl && window.CONFIG && window.CONFIG.validateWebAppUrl(sheetsUrl)) {
         console.log('[DB] Live save requested -> Syncing to Google Sheets immediately');
         this.syncToGoogleSheets().then(res => {
           if (res && res.status === 'queued') {
@@ -345,7 +352,7 @@ class RelationalDatabase {
       doc_code_template: 'DOC-[TYPE]-[STUDENT_ID]',
       book_code_template: 'BOOK-[TYPE]-[YEAR]-[NUM]',
       location_code_template: 'LOC-[CABINET]-[SHELF]-[FOLDER]',
-      sheets_url: DEFAULT_SHEETS_URL,
+      sheets_url: window.CONFIG ? window.CONFIG.getWebAppUrl() : '',
       drive_folder: '1FvbKtV0uFyPUfZPLLfQQHE45oH8fatTv',
       items_per_page: 15,
       notify_loan_overdue: true,
@@ -591,63 +598,156 @@ class RelationalDatabase {
     };
   }
 
+  /**
+   * Test Connection Function for Google Apps Script Web App
+   */
+  async testGoogleSheetsConnection(customUrl) {
+    const url = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+    console.log('[DB] Web App URL:', url);
+    console.log('[DB] Request method: GET');
+    console.log('[DB] Request action: ping');
+    console.log('[DB] Request started:', new Date().toISOString());
+
+    if (!url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(url))) {
+      console.warn('[DB] Connection test failed: Invalid Web App URL format');
+      return {
+        success: false,
+        code: 'INVALID_URL',
+        message: 'URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec'
+      };
+    }
+
+    const sep = url.includes('?') ? '&' : '?';
+    const pingUrl = `${url}${sep}action=ping&t=${Date.now()}`;
+
+    try {
+      const res = await fetch(pingUrl);
+      console.log('[DB] HTTP status:', res.status);
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          this.googleSyncDisabled = true;
+          this.DB_STATE.syncMessage = '🔴 เกิดข้อผิดพลาด 404: Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL ในหน้าตั้งค่าระบบ';
+          return {
+            success: false,
+            code: 'HTTP_404',
+            message: 'Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL'
+          };
+        }
+        return {
+          success: false,
+          code: `HTTP_${res.status}`,
+          message: `ไม่สามารถเชื่อมต่อ Google Apps Script ได้ (HTTP Status: ${res.status})`
+        };
+      }
+
+      let json;
+      try {
+        json = await res.json();
+        console.log('[DB] Response:', json);
+      } catch (e) {
+        return {
+          success: false,
+          code: 'PARSE_ERROR',
+          message: 'การตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบว่าเลือก Deployment: Web App'
+        };
+      }
+
+      if (json && json.status === 'success') {
+        this.googleSyncDisabled = false;
+        this.DB_STATE.syncMessage = '🟢 เชื่อมต่อแล้ว';
+        return {
+          success: true,
+          code: 'CONNECTED',
+          message: 'เชื่อมต่อ Google Apps Script สำเร็จ!'
+        };
+      }
+
+      return {
+        success: false,
+        code: 'FAILED',
+        message: json.message || 'การทดสอบการเชื่อมต่อไม่สำเร็จ'
+      };
+    } catch (err) {
+      console.warn('[DB] Connection test error:', err.message);
+      return {
+        success: false,
+        code: 'NETWORK_ERROR',
+        message: `ไม่สามารถเชื่อมต่อ Google Apps Script ได้: ${err.message}`
+      };
+    }
+  }
+
   // Real-time Fetch & Sync from Google Sheets Database
   async syncFromGoogleSheets(customUrl) {
+    if (this.googleSyncDisabled) {
+      console.warn('[DB] Auto sync skipped: Google Sheets sync is disabled due to previous 404 or invalid Web App URL.');
+      return null;
+    }
+
     if (this.fetchPromise) {
       console.log('[DB] Fetch already running - reusing existing request');
       return this.fetchPromise;
     }
 
     this.fetchPromise = (async () => {
-      console.log('[DB] Fetching remote data...');
+      const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+      console.log('[DB] Web App URL:', sheetsUrl);
+      console.log('[DB] Request method: GET');
+      console.log('[DB] Request action: get_all');
+      console.log('[DB] Request started:', new Date().toISOString());
+
       this.DB_STATE.fetching = true;
       this.DB_STATE.lastSyncStatus = 'fetching';
       this.currentSource = this.DATA_SOURCE.GOOGLE;
 
       try {
-        const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
-    if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
-      throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
-    }
+        if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
+          this.googleSyncDisabled = true;
+          this.DB_STATE.syncMessage = '🔴 URL ไม่ถูกต้อง: กรุณาตั้งค่า Web App URL ที่ลงท้ายด้วย /exec ในหน้าตั้งค่าระบบ';
+          throw new Error('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec');
+        }
 
-    const separator = sheetsUrl.includes('?') ? '&' : '?';
-    const fetchUrl = `${sheetsUrl}${separator}action=get_all&t=${Date.now()}`;
+        const separator = sheetsUrl.includes('?') ? '&' : '?';
+        const fetchUrl = `${sheetsUrl}${separator}action=get_all&t=${Date.now()}`;
 
-    let res;
-    try {
-      res = await fetch(fetchUrl);
-    } catch (fetchErr) {
-      throw new Error(
-        'เชื่อมต่อ Google Apps Script ไม่สำเร็จ (Failed to fetch)\n' +
-        '📍 กรุณาตรวจสอบ 3 จุดนี้ใน Google Apps Script:\n' +
-        '1) กด Deploy -> Manage Deployments -> แก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
-        '2) ต้องเลือก Version: "New version" (เวอร์ชันใหม่) ทุกครั้งหลังอัปเดตโค้ด GS แล้วกด Deploy\n' +
-        '3) ตรวจสอบว่า URL ในหน้าตั้งค่าระบบลงท้ายด้วย /exec'
-      );
-    }
+        let res;
+        try {
+          res = await fetch(fetchUrl);
+          console.log('[DB] HTTP status:', res.status);
+        } catch (fetchErr) {
+          throw new Error(
+            'เชื่อมต่อ Google Apps Script ไม่สำเร็จ (Failed to fetch)\n' +
+            '📍 กรุณาตรวจสอบ 3 จุดนี้ใน Google Apps Script:\n' +
+            '1) กด Deploy -> Manage Deployments -> แก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
+            '2) ต้องเลือก Version: "New version" (เวอร์ชันใหม่) ทุกครั้งหลังอัปเดตโค้ด GS แล้วกด Deploy\n' +
+            '3) ตรวจสอบว่า URL ในหน้าตั้งค่าระบบลงท้ายด้วย /exec'
+          );
+        }
 
-    if (!res.ok) {
-      if (res.status === 404) {
-        throw new Error(
-          'ไม่พบ URL ของ Web App (HTTP 404 Not Found)\n' +
-          '📍 วิธีแก้ไขปัญหา 404 ใน Google Apps Script:\n' +
-          '1) เปิด Google Apps Script -> กดเมนู Deploy -> Manage Deployments\n' +
-          '2) กดไอคอนรูปดินสอเพื่อแก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
-          '3) หากเพิ่งสร้าง Deployment ใหม่ คัดลอก Web App URL ใหม่มาวางในหน้า "ตั้งค่าระบบ"'
-        );
-      }
-      throw new Error(`HTTP Error status: ${res.status}`);
-    }
-    let json;
-    try {
-      json = await res.json();
-    } catch (e) {
-      throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
-    }
+        if (!res.ok) {
+          if (res.status === 404) {
+            this.googleSyncDisabled = true;
+            this.DB_STATE.syncMessage = '🔴 เกิดข้อผิดพลาด 404: Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL ในหน้าตั้งค่าระบบ';
+            throw new Error('Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL');
+          }
+          throw new Error(`HTTP Error status: ${res.status}`);
+        }
 
-    if (json.status !== 'success' || !json.data) {
-      throw new Error(json.message || 'ไม่สามารถดึงข้อมูลจาก Google Sheets ได้');
-    }
+        let json;
+        try {
+          json = await res.json();
+          console.log('[DB] Response:', json ? (json.status || 'OK') : 'Empty');
+        } catch (e) {
+          throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
+        }
+
+        if (json.status !== 'success' || !json.data) {
+          throw new Error(json.message || 'ไม่สามารถดึงข้อมูลจาก Google Sheets ได้');
+        }
+
+        this.googleSyncDisabled = false;
+        this.DB_STATE.syncMessage = '🟢 เชื่อมต่อแล้ว';
 
     const getFingerprint = (d) => {
       if (!d) return '';
@@ -998,9 +1098,16 @@ applySheetData(sheetData) {
 
   // Push Local Database to Google Sheets
   async syncToGoogleSheets(customUrl) {
-    const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || DEFAULT_SHEETS_URL;
-    if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
-      throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
+    if (this.googleSyncDisabled) {
+      console.warn('[DB] Save to Sheets skipped: Google Sheets sync is disabled due to invalid URL or 404.');
+      return { status: 'disabled', message: 'Google Sheets Sync ถูกปิดใช้งานเนื่องจาก URL ไม่ถูกต้องหรือตอบกลับ 404' };
+    }
+
+    const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+    if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
+      this.googleSyncDisabled = true;
+      this.DB_STATE.syncMessage = '🔴 URL ไม่ถูกต้อง: กรุณาตั้งค่า Web App URL ที่ลงท้ายด้วย /exec ในหน้าตั้งค่าระบบ';
+      throw new Error('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec');
     }
 
     if (this.saveInProgress || this.isSyncing) {
@@ -1012,9 +1119,13 @@ applySheetData(sheetData) {
 
     this.saveInProgress = true;
     this.isSyncing = true;
-    console.log('[DB] Save started');
-
     const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    console.log('[DB] Web App URL:', sheetsUrl);
+    console.log('[DB] Request method: POST');
+    console.log('[DB] Request action: sync_database');
+    console.log('[DB] Request ID:', requestId);
+    console.log('[DB] Request started:', new Date().toISOString());
+
     const payload = {
       action: 'sync_database',
       requestId: requestId,
@@ -1041,16 +1152,13 @@ applySheetData(sheetData) {
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
           });
+          console.log('[DB] HTTP status:', res.status);
 
           if (!res.ok) {
             if (res.status === 404) {
-              throw new Error(
-                'ไม่พบ URL ของ Web App (HTTP 404 Not Found)\n' +
-                '📍 วิธีแก้ไขปัญหา 404 ใน Google Apps Script:\n' +
-                '1) เปิด Google Apps Script -> กดเมนู Deploy -> Manage Deployments\n' +
-                '2) กดไอคอนรูปดินสอเพื่อแก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
-                '3) หากเพิ่งสร้าง Deployment ใหม่ คัดลอก Web App URL ใหม่มาวางในหน้า "ตั้งค่าระบบ"'
-              );
+              this.googleSyncDisabled = true;
+              this.DB_STATE.syncMessage = '🔴 เกิดข้อผิดพลาด 404: Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL ในหน้าตั้งค่าระบบ';
+              throw new Error('Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Deployment และ Web App URL');
             }
             throw new Error(`HTTP Error status: ${res.status}`);
           }

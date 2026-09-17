@@ -81,7 +81,7 @@ const settingsView = {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label font-weight-bold">Google Sheets Webhook URL / Web App URL</label>
-              <input type="text" id="setting-sheets-url" class="form-control" value="${s.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec'}" placeholder="https://script.google.com/macros/s/.../exec">
+              <input type="text" id="setting-sheets-url" class="form-control" value="${s.sheets_url || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '')}" placeholder="https://script.google.com/macros/s/.../exec">
               <div class="form-text" style="color: #64748b;"><i class="fa-solid fa-link"></i> วาง URL สำหรับซิงก์ข้อมูลจาก Google Apps Script (ต้องลงท้ายด้วย <code>/exec</code>)</div>
             </div>
             <div class="form-group">
@@ -461,25 +461,19 @@ function getAllSheetData() {
     if (testCloudBtn) {
       testCloudBtn.onclick = async () => {
         const url = document.getElementById('setting-sheets-url').value.trim();
-        if (!url || !url.includes('script.google.com')) {
-          window.utils.showToast('กรุณาระบุ Google Sheets Web App URL ในช่องให้ถูกต้องก่อนทดสอบ', 'warning');
+        if (!url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(url))) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
+          }
           return;
         }
         if (window.utils && window.utils.showToast) {
           window.utils.showToast('กำลังทดสอบเชื่อมต่อ Google Apps Script Web App...', 'info');
-          try {
-            const sep = url.includes('?') ? '&' : '?';
-            const res = await fetch(`${url}${sep}action=ping&t=${Date.now()}`);
-            if (!res.ok) throw new Error(`HTTP Error status: ${res.status}`);
-            const json = await res.json();
-            window.utils.showToast(`✅ เชื่อมต่อ Google Apps Script สำเร็จ! (${json.message || 'Active'})`, 'success', 5000);
-          } catch (err) {
-            window.utils.showToast(
-              '❌ เชื่อมต่อไม่สำเร็จ (Failed to fetch)\n' +
-              '📍 ตรวจสอบใน Apps Script: ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน) แล้วกด Deploy -> Manage Deployments -> New Version',
-              'danger',
-              8000
-            );
+          const result = await window.db.testGoogleSheetsConnection(url);
+          if (result.success) {
+            window.utils.showToast(`✅ ${result.message}`, 'success', 5000);
+          } else {
+            window.utils.showToast(`❌ ${result.message}`, 'danger', 8000);
           }
         }
       };
@@ -489,11 +483,20 @@ function getAllSheetData() {
     if (syncFromBtn) {
       syncFromBtn.onclick = async () => {
         const sheetsUrl = document.getElementById('setting-sheets-url').value.trim();
+        if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
+          }
+          return;
+        }
         try {
           window.utils.showToast('กำลังเชื่อมต่อดึงข้อมูลทั้งหมดจาก Google Sheets...', 'info');
+          window.db.googleSyncDisabled = false;
           const counts = await window.db.syncFromGoogleSheets(sheetsUrl);
-          window.utils.showToast(`ดึงฐานข้อมูลจาก Google Sheets สำเร็จ! (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร, ${counts.bookCount} เล่ม)`, 'success', 5000);
-          setTimeout(() => window.location.reload(), 1000);
+          if (counts) {
+            window.utils.showToast(`ดึงฐานข้อมูลจาก Google Sheets สำเร็จ! (${counts.studentCount} นักเรียน, ${counts.docCount} เอกสาร, ${counts.bookCount} เล่ม)`, 'success', 5000);
+            setTimeout(() => window.location.reload(), 1000);
+          }
         } catch (err) {
           window.utils.showToast(`ดึงข้อมูลไม่สำเร็จ: ${err.message}`, 'danger', 5000);
         }
@@ -504,8 +507,15 @@ function getAllSheetData() {
     if (syncToBtn) {
       syncToBtn.onclick = async () => {
         const sheetsUrl = document.getElementById('setting-sheets-url').value.trim();
+        if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
+          }
+          return;
+        }
         try {
           window.utils.showToast('กำลังส่งออกข้อมูลทั้งหมดไปยัง Google Sheets...', 'info');
+          window.db.googleSyncDisabled = false;
           await window.db.syncToGoogleSheets(sheetsUrl);
           window.utils.showToast('ส่งออกข้อมูลทั้งหมดไปที่ Google Sheets เรียบร้อยแล้ว!', 'success', 5000);
         } catch (err) {
@@ -516,16 +526,33 @@ function getAllSheetData() {
 
     const saveCloudBtn = document.getElementById('save-cloud-config-btn');
     if (saveCloudBtn) {
-      saveCloudBtn.onclick = () => {
+      saveCloudBtn.onclick = async () => {
         const sheetsUrl = document.getElementById('setting-sheets-url').value.trim();
         const driveFolder = document.getElementById('setting-drive-folder').value.trim();
+
+        if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
+          }
+          return;
+        }
+
         if (!window.db.data.settings) window.db.data.settings = {};
         window.db.data.settings.sheets_url = sheetsUrl;
         window.db.data.settings.drive_folder = driveFolder;
+        window.db.googleSyncDisabled = false;
         window.db.addAuditLog('ตั้งค่าระบบ', 'แก้ไขตั้งค่า Cloud', 'อัปเดตการตั้งค่า Google Drive & Google Sheets');
         window.db.save(true);
-        if (window.utils && window.utils.showToast) {
-          window.utils.showToast('บันทึกการตั้งค่า Google Drive & Google Sheets และซิงก์เรียบร้อยแล้ว', 'success');
+
+        const connResult = await window.db.testGoogleSheetsConnection(sheetsUrl);
+        if (connResult.success) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('บันทึกการตั้งค่า Google Drive & Google Sheets และเชื่อมต่อสำเร็จ!', 'success', 5000);
+          }
+        } else {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast(`บันทึกการตั้งค่าแล้ว แต่พบปัญหาการเชื่อมต่อ: ${connResult.message}`, 'warning', 8000);
+          }
         }
       };
     }

@@ -203,10 +203,13 @@ function updateLiveClock() {
 }
 
 function autoFetchFromGoogleSheets(silent = false) {
-  const settings = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
-  const sheetsUrl = settings.sheets_url || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
-  
-  if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) return;
+  if (window.db && window.db.googleSyncDisabled) {
+    if (!silent) console.warn('[App] Auto fetch skipped: Google Sheets sync is disabled due to invalid URL or 404');
+    return;
+  }
+
+  const sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : '';
+  if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) return;
 
   const currentStudentCount = (window.db.data.students || []).length;
   const currentDocCount = (window.db.data.documents || []).length;
@@ -256,13 +259,13 @@ window.autoFetchFromGoogleSheets = autoFetchFromGoogleSheets;
 
 // Multi-Device Realtime Auto-Sync: Keep all open devices updated
 window.addEventListener('focus', () => {
-  if (window.db && typeof window.autoFetchFromGoogleSheets === 'function') {
+  if (window.db && !window.db.googleSyncDisabled && typeof window.autoFetchFromGoogleSheets === 'function') {
     window.autoFetchFromGoogleSheets(true);
   }
 });
 
 setInterval(() => {
-  if (window.db && typeof window.autoFetchFromGoogleSheets === 'function') {
+  if (window.db && !window.db.googleSyncDisabled && typeof window.autoFetchFromGoogleSheets === 'function') {
     window.autoFetchFromGoogleSheets(true);
   }
 }, 25000);

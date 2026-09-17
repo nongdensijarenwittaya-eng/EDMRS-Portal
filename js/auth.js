@@ -48,8 +48,8 @@ class AuthSystem {
 
     let user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
 
-    const sheetsUrl = (window.db && window.db.data && window.db.data.settings && window.db.data.settings.sheets_url) || 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
-    if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
+    const sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : '';
+    if (sheetsUrl && window.CONFIG && window.CONFIG.validateWebAppUrl(sheetsUrl)) {
       if (!user) {
         // Uncached account: perform a live fetch from Google Sheets with 4s timeout
         try {
