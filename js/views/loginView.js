@@ -83,11 +83,6 @@ const loginView = {
         }
 
         try {
-          if (!window.db.data.users || window.db.data.users.length === 0) {
-            try {
-              await window.db.syncFromGoogleSheets();
-            } catch (sErr) {}
-          }
           const result = await window.authSystem.login(username, password, rememberMe);
           if (result.success) {
             sessionStorage.removeItem('has_loaded_initial');
