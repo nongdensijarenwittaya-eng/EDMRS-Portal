@@ -178,12 +178,15 @@ class RelationalDatabase {
     this._syncTimeout = setTimeout(() => {
       const sheetsUrl = (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
       if (sheetsUrl && window.CONFIG && window.CONFIG.validateWebAppUrl(sheetsUrl)) {
-        console.log('[DB] Live save requested -> Syncing to Google Sheets immediately');
+        console.log('[DB] Live save requested -> Syncing to Google Sheets (Push All Data) immediately');
         this.syncToGoogleSheets().then(res => {
           if (res && res.status === 'queued') {
             console.log('[DB] Save skipped: request already in progress');
           } else if (res && res.status === 'success') {
-            console.log('[DB] Live sync to Google Sheets completed successfully');
+            console.log('[DB] Live sync to Google Sheets (Push All Data) completed successfully');
+            if (window.utils && typeof window.utils.showToast === 'function') {
+              window.utils.showToast('☁️ บันทึกข้อมูลและส่งออกไปที่ Google Sheets (Push All Data) สำเร็จ!', 'success');
+            }
           }
         }).catch(err => {
           console.warn('[DB] Auto sync to Google Sheets background attempt:', err.message);
