@@ -190,9 +190,6 @@ function initAppShell() {
   // Update Live Clock
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
-
-  // Auto-fetch real database from Google Sheets on app load
-  autoFetchFromGoogleSheets(false);
 }
 
 function updateLiveClock() {

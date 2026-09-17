@@ -213,16 +213,23 @@ function doGet(e) {
 function doPost(e) {
   var lock = LockService.getScriptLock();
   var hasLock = false;
+
   try {
-    hasLock = lock.waitLock(10000);
+    hasLock = lock.tryLock(10000);
     if (!hasLock) {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
+        code: "LOCK_TIMEOUT",
         message: "ขณะนี้มีอุปกรณ์อื่นกำลังบันทึกข้อมูลอยู่ โปรดลองใหม่อีกครั้งในอีกสักครู่ (Lock Timeout)"
       })).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (lockErr) {
     console.warn("Write lock acquire warning:", lockErr);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      code: "LOCK_TIMEOUT",
+      message: "ขณะนี้มีอุปกรณ์อื่นกำลังบันทึกข้อมูลอยู่ โปรดลองใหม่อีกครั้งในอีกสักครู่ (Lock Timeout)"
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 
   try {
@@ -234,11 +241,23 @@ function doPost(e) {
     }
     var action = contents.action || "sync_database";
 
+    // Deduplicate repeated requests via Request ID
+    if (contents.requestId) {
+      try {
+        var cache = CacheService.getScriptCache();
+        var cachedResponse = cache.get("req_" + contents.requestId);
+        if (cachedResponse) {
+          return ContentService.createTextOutput(cachedResponse).setMimeType(ContentService.MimeType.JSON);
+        }
+      } catch (cErr) {}
+    }
+
     if (action === "init_structure" || action === "setup") {
       initSheetsStructure();
       SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
+        code: "SUCCESS",
         message: "Created all Google Sheets tabs & columns automatically!"
       })).setMimeType(ContentService.MimeType.JSON);
     }
@@ -259,11 +278,19 @@ function doPost(e) {
       
       SpreadsheetApp.flush();
 
-      return ContentService.createTextOutput(JSON.stringify({
+      var successOutputStr = JSON.stringify({
         status: "success",
+        code: "SUCCESS",
+        requestId: contents.requestId || "",
         message: "Synchronized database with Google Sheets successfully!",
         timestamp: new Date().toISOString()
-      })).setMimeType(ContentService.MimeType.JSON);
+      });
+
+      if (contents.requestId) {
+        try { CacheService.getScriptCache().put("req_" + contents.requestId, successOutputStr, 60); } catch(cErr) {}
+      }
+
+      return ContentService.createTextOutput(successOutputStr).setMimeType(ContentService.MimeType.JSON);
     }
     
     if (action === "upload_file_to_album") {
@@ -274,11 +301,12 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Unknown action" })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", code: "UNKNOWN_ACTION", message: "Unknown action" })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({
       status: "error",
+      code: "SAVE_ERROR",
       message: error.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   } finally {

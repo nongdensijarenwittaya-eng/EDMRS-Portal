@@ -7,8 +7,21 @@ const DB_STORAGE_KEY = 'EDMRS_RELATIONAL_DB_V2.5';
 
 class RelationalDatabase {
   constructor() {
+    this.DATA_SOURCE = {
+      LOCAL: 'local',
+      GOOGLE: 'google',
+      USER: 'user'
+    };
+    this.currentSource = this.DATA_SOURCE.LOCAL;
     this.isSyncing = false;
     this.hasPendingSync = false;
+    this.saveInProgress = false;
+    this.saveQueued = false;
+    this.lastSyncTime = null;
+    this.lastSyncError = null;
+
+    console.log('[DB] Initializing...');
+
     this.data = {
       users: [],
       roles: [],
@@ -124,13 +137,20 @@ class RelationalDatabase {
     }
   }
 
-  save(autoSyncSheets = true) {
+  save(autoSyncSheets = true, source = null) {
+    if (source) {
+      this.currentSource = source;
+    } else if (this.currentSource !== this.DATA_SOURCE.GOOGLE) {
+      this.currentSource = this.DATA_SOURCE.USER;
+    }
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
     } catch (e) {
       console.warn('Failed to save to localStorage:', e);
     }
-    this.triggerAutoSyncToSheets();
+    if (autoSyncSheets && this.currentSource !== this.DATA_SOURCE.GOOGLE) {
+      this.triggerAutoSyncToSheets();
+    }
   }
 
   triggerAutoSyncToSheets() {
@@ -138,12 +158,13 @@ class RelationalDatabase {
     this._syncTimeout = setTimeout(() => {
       const sheetsUrl = this.data.settings && this.data.settings.sheets_url;
       if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
+        console.log('[DB] Save requested');
         this.syncToGoogleSheets().then(res => {
-          if (res && res.status !== 'queued') {
-            console.log('Auto-synced latest database to Google Sheets successfully');
+          if (res && res.status === 'queued') {
+            console.log('[DB] Save skipped: request already in progress');
           }
         }).catch(err => {
-          console.warn('Auto sync to Google Sheets background attempt:', err.message);
+          console.warn('[DB] Auto sync to Google Sheets background attempt:', err.message);
         });
       }
     }, 1200);
@@ -493,6 +514,9 @@ class RelationalDatabase {
 
   // Real-time Fetch & Sync from Google Sheets Database
   async syncFromGoogleSheets(customUrl) {
+    console.log('[DB] Fetching remote data...');
+    this.currentSource = this.DATA_SOURCE.GOOGLE;
+
     const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url);
     if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
@@ -514,7 +538,18 @@ class RelationalDatabase {
       );
     }
 
-    if (!res.ok) throw new Error(`HTTP Error status: ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error(
+          'ไม่พบ URL ของ Web App (HTTP 404 Not Found)\n' +
+          '📍 วิธีแก้ไขปัญหา 404 ใน Google Apps Script:\n' +
+          '1) เปิด Google Apps Script -> กดเมนู Deploy -> Manage Deployments\n' +
+          '2) กดไอคอนรูปดินสอเพื่อแก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
+          '3) หากเพิ่งสร้าง Deployment ใหม่ คัดลอก Web App URL ใหม่มาวางในหน้า "ตั้งค่าระบบ"'
+        );
+      }
+      throw new Error(`HTTP Error status: ${res.status}`);
+    }
     let json;
     try {
       json = await res.json();
@@ -847,6 +882,9 @@ class RelationalDatabase {
     this.addAuditLog('Google Sheets', 'ดึงฐานข้อมูลจาก Google Sheets', `ดึงข้อมูลจากชีทสำเร็จ: ${studentCount} นักเรียน, ${docCount} เอกสาร, ${bookCount} เล่ม, ${userCount} ผู้ใช้`);
     this.save(false);
 
+    this.currentSource = this.DATA_SOURCE.LOCAL;
+    console.log('[DB] Remote data loaded');
+
     const newFingerprint = getFingerprint(this.data);
     const dataChanged = (oldFingerprint !== newFingerprint);
 
@@ -872,60 +910,116 @@ class RelationalDatabase {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
     }
 
-    if (this.isSyncing) {
+    if (this.saveInProgress || this.isSyncing) {
+      this.saveQueued = true;
       this.hasPendingSync = true;
+      console.log('[DB] Save skipped: request already in progress');
       return { status: 'queued', message: 'มีกระบวนการซิงก์ทำงานอยู่แล้ว ได้เข้าคิวข้อมูลล่าสุดไว้เรียบร้อย' };
     }
 
+    this.saveInProgress = true;
     this.isSyncing = true;
+    console.log('[DB] Save started');
+
+    const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    const payload = {
+      action: 'sync_database',
+      requestId: requestId,
+      users: this.data.users || [],
+      students: this.data.students || [],
+      documents: this.data.documents || [],
+      books: this.data.books || [],
+      loans: this.data.loans || [],
+      storage_locations: this.data.storage_locations || [],
+      settings: this.data.settings || {},
+      deleted_keys: this.data.deleted_keys || {}
+    };
+
+    let attempts = 0;
+    const maxRetries = 3;
+    let lastErr = null;
 
     try {
-      const payload = {
-        action: 'sync_database',
-        users: this.data.users || [],
-        students: this.data.students || [],
-        documents: this.data.documents || [],
-        books: this.data.books || [],
-        loans: this.data.loans || [],
-        storage_locations: this.data.storage_locations || [],
-        settings: this.data.settings || {},
-        deleted_keys: this.data.deleted_keys || {}
-      };
+      while (attempts <= maxRetries) {
+        attempts++;
+        try {
+          let res = await fetch(sheetsUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          });
 
-      let res;
-      try {
-        res = await fetch(sheetsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-      } catch (fetchErr) {
-        throw new Error(
-          'เชื่อมต่อส่งข้อมูลไป Google Sheets ไม่สำเร็จ (Failed to fetch)\n' +
-          '📍 กรุณาตรวจสอบว่าใน Apps Script ได้ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)'
-        );
+          if (!res.ok) {
+            if (res.status === 404) {
+              throw new Error(
+                'ไม่พบ URL ของ Web App (HTTP 404 Not Found)\n' +
+                '📍 วิธีแก้ไขปัญหา 404 ใน Google Apps Script:\n' +
+                '1) เปิด Google Apps Script -> กดเมนู Deploy -> Manage Deployments\n' +
+                '2) กดไอคอนรูปดินสอเพื่อแก้ไข -> ตั้งค่า "Who has access" เป็น "Anyone" (ทุกคน)\n' +
+                '3) หากเพิ่งสร้าง Deployment ใหม่ คัดลอก Web App URL ใหม่มาวางในหน้า "ตั้งค่าระบบ"'
+              );
+            }
+            throw new Error(`HTTP Error status: ${res.status}`);
+          }
+
+          let json;
+          try {
+            json = await res.json();
+          } catch (e) {
+            throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
+          }
+
+          if (json.status === 'error' && (json.code === 'LOCK_TIMEOUT' || String(json.message).includes('Lock Timeout') || String(json.message).includes('อุปกรณ์อื่นกำลังบันทึก'))) {
+            if (attempts <= maxRetries) {
+              console.warn('[DB] Lock timeout');
+              console.warn(`[DB] Retrying ${attempts}/${maxRetries}`);
+              if (window.utils && window.utils.showToast) {
+                window.utils.showToast(`มีผู้ใช้อื่นกำลังบันทึกข้อมูลอยู่ ระบบกำลังลองใหม่อีกครั้ง (${attempts}/${maxRetries})...`, 'warning', 3000);
+              }
+              await new Promise(r => setTimeout(r, attempts * 1000));
+              continue;
+            }
+          }
+
+          if (json.status !== 'success') {
+            throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
+          }
+
+          this.lastSyncTime = new Date().toLocaleString('th-TH');
+          this.lastSyncError = null;
+          console.log('[DB] Save success');
+          return json;
+
+        } catch (fetchErr) {
+          lastErr = fetchErr;
+          if (attempts <= maxRetries && (fetchErr.message.includes('Lock Timeout') || fetchErr.message.includes('อุปกรณ์อื่นกำลังบันทึก'))) {
+            console.warn('[DB] Lock timeout');
+            console.warn(`[DB] Retrying ${attempts}/${maxRetries}`);
+            await new Promise(r => setTimeout(r, attempts * 1000));
+            continue;
+          }
+          this.lastSyncError = fetchErr.message;
+          throw fetchErr;
+        }
       }
-
-      if (!res.ok) throw new Error(`HTTP Error status: ${res.status}`);
-      let json;
-      try {
-        json = await res.json();
-      } catch (e) {
-        throw new Error('ตอบกลับจาก Google Apps Script ไม่ใช่รูปแบบ JSON กรุณาตรวจสอบการ Re-deploy สคริปต์อีกครั้ง');
-      }
-
-      if (json.status !== 'success') {
-        throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
-      }
-
-      return json;
+      throw lastErr || new Error('ซิงก์ข้อมูลไม่สำเร็จล้มเหลวเกินจำนวนครั้งที่กำหนด');
     } finally {
+      this.saveInProgress = false;
       this.isSyncing = false;
-      if (this.hasPendingSync) {
+      if (this.saveQueued || this.hasPendingSync) {
+        this.saveQueued = false;
         this.hasPendingSync = false;
         setTimeout(() => this.triggerAutoSyncToSheets(), 500);
       }
     }
+  }
+
+  getSyncStatus() {
+    return {
+      isSyncing: this.saveInProgress || this.isSyncing,
+      lastSyncTime: this.lastSyncTime,
+      lastError: this.lastSyncError
+    };
   }
 
   // Upload Camera Captured Photo or Scanner File to Google Drive Album via Apps Script API (Disabled per user requirement)

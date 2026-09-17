@@ -82,11 +82,6 @@ class AppRouter {
   handleRoute() {
     const { routeName, params } = this.parseHash();
 
-    // Silently auto-fetch latest real database from Google Sheets & Drive on route switch
-    if (typeof window.autoFetchFromGoogleSheets === 'function') {
-      window.autoFetchFromGoogleSheets(true);
-    }
-
     // Authentication Guard
     const isAuthenticated = window.authSystem ? window.authSystem.isAuthenticated() : false;
     if (!isAuthenticated && routeName !== 'login') {
