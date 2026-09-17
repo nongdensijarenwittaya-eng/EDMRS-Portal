@@ -154,6 +154,7 @@ class RelationalDatabase {
     } else if (this.currentSource !== this.DATA_SOURCE.GOOGLE) {
       this.currentSource = this.DATA_SOURCE.USER;
     }
+    this.cleanupDeletedKeys();
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
     } catch (e) {
@@ -376,6 +377,34 @@ class RelationalDatabase {
     if (cleanKey && !this.data.deleted_keys[entity].map(k => String(k).toLowerCase()).includes(cleanKey)) {
       this.data.deleted_keys[entity].push(cleanKey);
     }
+  }
+
+  untrackDeletedKey(entity, key) {
+    if (!this.data.deleted_keys || !this.data.deleted_keys[entity]) return;
+    const cleanKey = String(key || '').trim().toLowerCase();
+    if (cleanKey) {
+      this.data.deleted_keys[entity] = this.data.deleted_keys[entity].filter(k => String(k).trim().toLowerCase() !== cleanKey);
+    }
+  }
+
+  cleanupDeletedKeys() {
+    if (!this.data.deleted_keys) {
+      this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+      return;
+    }
+    const activeStudentIds = new Set((this.data.students || []).map(s => String(s.student_id).trim().toLowerCase()));
+    const activeDocCodes = new Set((this.data.documents || []).map(d => String(d.doc_code).trim().toLowerCase()));
+    const activeBookCodes = new Set((this.data.books || []).map(b => String(b.book_code).trim().toLowerCase()));
+    const activeLoanCodes = new Set((this.data.loans || []).map(l => String(l.loan_code || l.id).trim().toLowerCase()));
+    const activeLocCodes = new Set((this.data.storage_locations || []).map(l => String(l.code).trim().toLowerCase()));
+    const activeUsernames = new Set((this.data.users || []).map(u => String(u.username).trim().toLowerCase()));
+
+    this.data.deleted_keys.students = (this.data.deleted_keys.students || []).filter(k => !activeStudentIds.has(String(k).toLowerCase()));
+    this.data.deleted_keys.documents = (this.data.deleted_keys.documents || []).filter(k => !activeDocCodes.has(String(k).toLowerCase()));
+    this.data.deleted_keys.books = (this.data.deleted_keys.books || []).filter(k => !activeBookCodes.has(String(k).toLowerCase()));
+    this.data.deleted_keys.loans = (this.data.deleted_keys.loans || []).filter(k => !activeLoanCodes.has(String(k).toLowerCase()));
+    this.data.deleted_keys.storage_locations = (this.data.deleted_keys.storage_locations || []).filter(k => !activeLocCodes.has(String(k).toLowerCase()));
+    this.data.deleted_keys.users = (this.data.deleted_keys.users || []).filter(k => !activeUsernames.has(String(k).toLowerCase()));
   }
 
   deleteUser(username) {
@@ -639,325 +668,321 @@ class RelationalDatabase {
     };
 
     const oldFingerprint = getFingerprint(this.data);
-    const sheetData = json.data;
-    let studentCount = 0, docCount = 0, bookCount = 0, loanCount = 0, locCount = 0;
-    this.data.is_mock_cleared = true;
+    this.applySheetData(json.data);
 
-    if (!this.data.deleted_keys) {
-      this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
-    }
+    const studentCount = (this.data.students || []).length;
+    const docCount = (this.data.documents || []).length;
+    const bookCount = (this.data.books || []).length;
+    const loanCount = (this.data.loans || []).length;
+    const locCount = (this.data.storage_locations || []).length;
+    const userCount = (this.data.users || []).length;
 
-    const deletedUsers = (this.data.deleted_keys.users || []).map(k => String(k).toLowerCase());
-    const deletedStudents = (this.data.deleted_keys.students || []).map(k => String(k).toLowerCase());
-    const deletedDocs = (this.data.deleted_keys.documents || []).map(k => String(k).toLowerCase());
-    const deletedBooks = (this.data.deleted_keys.books || []).map(k => String(k).toLowerCase());
-    const deletedLoans = (this.data.deleted_keys.loans || []).map(k => String(k).toLowerCase());
-    const deletedLocs = (this.data.deleted_keys.storage_locations || []).map(k => String(k).toLowerCase());
+    this.DB_STATE.lastFetchAt = new Date().toLocaleString('th-TH');
+    this.DB_STATE.lastSyncStatus = 'success';
+    console.log('[DB] Remote data loaded');
 
-    const extractUrl = (rawStr) => {
-      if (!rawStr) return '';
-      const str = String(rawStr).trim();
-      const match = str.match(/HYPERLINK\("([^"]+)"/i);
-      if (match) return match[1];
-      if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('blob:')) return str;
-      return str;
-    };
+    const newFingerprint = getFingerprint(this.data);
+    const dataChanged = (oldFingerprint !== newFingerprint);
 
-    // 1. Students
-    if (Array.isArray(sheetData.Students) && sheetData.Students.length > 1) {
-      const rows = sheetData.Students.slice(1);
-      const parsedStudents = rows.map((row, idx) => ({
-        id: idx + 1,
-        student_id: String(row[0] || '').trim(),
-        prefix: String(row[1] || '').trim(),
-        first_name: String(row[2] || '').trim(),
-        last_name: String(row[3] || '').trim(),
-        previous_name: String(row[4] || '').trim(),
-        grade_level: String(row[5] || '').trim(),
-        academic_year: String(row[6] || '').trim(),
-        doc_number: String(row[7] || '').trim(),
-        set_number: String(row[8] || '').trim(),
-        book_number: String(row[8] || '').trim(),
-        file_url: row.length >= 12 ? extractUrl(row[9]) : '',
-        file_url_back: row.length >= 12 ? extractUrl(row[10]) : '',
-        status: String((row.length >= 12 ? row[11] : row[9]) || 'graduated').trim()
-      })).filter(s => s.student_id);
-
-      const uniqueStudents = [];
-      const seenStudentIds = new Set();
-      parsedStudents.forEach(s => {
-        const sid = String(s.student_id).toLowerCase();
-        if (!seenStudentIds.has(sid) && !deletedStudents.includes(sid)) {
-          seenStudentIds.add(sid);
-          uniqueStudents.push(s);
-        }
-      });
-
-      this.data.students = uniqueStudents;
-      studentCount = uniqueStudents.length;
-    } else {
-      this.data.students = [];
-      studentCount = 0;
-    }
-
-    // 2. Documents
-    if (Array.isArray(sheetData.Documents) && sheetData.Documents.length > 1) {
-      const rows = sheetData.Documents.slice(1);
-      const parsedDocs = rows.map((row, idx) => {
-        let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
-
-        if (row.length >= 12) {
-          docCode = String(row[0] || '').trim();
-          stdId = String(row[1] || '').trim();
-          stdName = String(row[2] || '').trim();
-          docTypeCode = String(row[3] || 'ปพ.1').trim();
-          gradYear = String(row[4] || '2565').trim();
-          setNo = String(row[5] || '01').trim();
-          docNum = String(row[6] || '001').trim();
-          status = String(row[7] || 'stored').trim();
-          locationCode = String(row[8] || '').trim();
-          fileName = String(row[9] || '').trim();
-          rawDriveUrl = String(row[10] || '').trim();
-          rawDriveUrlBack = String(row[11] || '').trim();
-        } else if (row.length >= 9) {
-          docCode = String(row[0] || '').trim();
-          stdId = String(row[1] || '').trim();
-          stdName = String(row[2] || '').trim();
-          docTypeCode = String(row[3] || 'ปพ.1').trim();
-          gradYear = String(row[4] || '2565').trim();
-          setNo = String(row[5] || '01').trim();
-          docNum = String(row[6] || '001').trim();
-          status = String(row[7] || 'stored').trim();
-          locationCode = String(row[8] || '').trim();
-        } else {
-          docCode = String(row[0] || '').trim();
-          docTypeCode = String(row[1] || 'ปพ.1').trim();
-          gradYear = String(row[2] || '2565').trim();
-          setNo = String(row[3] || '01').trim();
-          docNum = String(row[4] || '001').trim();
-          status = String(row[5] || 'stored').trim();
-          locationCode = String(row[6] || '').trim();
-        }
-
-        const driveUrl = extractUrl(rawDriveUrl);
-        const driveUrlBack = extractUrl(rawDriveUrlBack);
-
-        return this.sanitizeDocumentItem({
-          id: idx + 1,
-          doc_code: docCode || `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`,
-          student_id: stdId,
-          student_name: stdName,
-          doc_type_code: docTypeCode,
-          academic_year: gradYear,
-          book_number: setNo,
-          doc_number: docNum,
-          status: status,
-          location_code: locationCode,
-          file_name: fileName || `ปพ_${gradYear}_${setNo}_${docNum}.pdf`,
-          file_url: driveUrl,
-          file_url_back: driveUrlBack,
-          book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
-          file_size: driveUrl.includes('drive') ? 'Google Drive' : 'N/A'
-        });
-      }).filter(d => d.doc_code || d.doc_number || d.student_id);
-
-      const uniqueDocs = [];
-      const seenDocCodes = new Set();
-      parsedDocs.forEach(d => {
-        const dcode = String(d.doc_code).toLowerCase();
-        if (!seenDocCodes.has(dcode) && !deletedDocs.includes(dcode)) {
-          seenDocCodes.add(dcode);
-          uniqueDocs.push(d);
-        }
-      });
-
-      this.data.documents = uniqueDocs;
-      docCount = uniqueDocs.length;
-    } else {
-      this.data.documents = [];
-      docCount = 0;
-    }
-
-    // 3. Books
-    if (Array.isArray(sheetData.Books) && sheetData.Books.length > 1) {
-      const rows = sheetData.Books.slice(1);
-      const parsedBooks = rows.map((row, idx) => {
-        const sNo = String(row[4] || '').trim();
-        const eNo = String(row[5] || '').trim();
-        const sNum = parseInt(sNo.replace(/\D/g, ''));
-        const eNum = parseInt(eNo.replace(/\D/g, ''));
-        const calcCount = (!isNaN(sNum) && !isNaN(eNum) && eNum >= sNum) ? (eNum - sNum + 1) : (parseInt(row[6]) || 50);
-
-        return {
-          id: idx + 1,
-          book_code: String(row[0] || '').trim(),
-          doc_type_code: String(row[1] || '').trim(),
-          academic_year: String(row[2] || '').trim(),
-          book_number: String(row[3] || '').trim(),
-          start_no: sNo,
-          end_no: eNo,
-          item_count: calcCount,
-          location_code: String(row[7] || '').trim(),
-          status: 'active'
-        };
-      }).filter(b => b.book_code);
-
-      const uniqueBooks = [];
-      const seenBookCodes = new Set();
-      parsedBooks.forEach(b => {
-        const bcode = String(b.book_code).toLowerCase();
-        if (!seenBookCodes.has(bcode) && !deletedBooks.includes(bcode)) {
-          seenBookCodes.add(bcode);
-          uniqueBooks.push(b);
-        }
-      });
-
-      this.data.books = uniqueBooks;
-      bookCount = uniqueBooks.length;
-    } else {
-      this.data.books = [];
-      bookCount = 0;
-    }
-
-    // 4. Loans / Document Copy Requests
-    if (Array.isArray(sheetData.Loans) && sheetData.Loans.length > 1) {
-      const rows = sheetData.Loans.slice(1);
-      const parsedLoans = rows.map((row, idx) => {
-        const item = {
-          id: idx + 1,
-          loan_code: String(row[0] || '').trim(),
-          student_id: String(row[1] || '').trim(),
-          student_name: String(row[2] || '').trim(),
-          doc_type_code: String(row[3] || 'ปพ.1').trim(),
-          borrower_name: String(row[4] || '').trim(),
-          borrower_dept: String(row[5] || '').trim(),
-          loan_date: String(row[6] || '').trim(),
-          return_due_date: String(row[7] || '').trim(),
-          reason: String(row[8] || '').trim(),
-          status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
-        };
-        return this.sanitizeLoanItem(item);
-      }).filter(l => l.loan_code);
-
-      const uniqueLoans = [];
-      const seenLoanCodes = new Set();
-      parsedLoans.forEach(l => {
-        const lcode = String(l.loan_code).toLowerCase();
-        if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
-          seenLoanCodes.add(lcode);
-          uniqueLoans.push(l);
-        }
-      });
-
-      this.data.loans = uniqueLoans;
-      loanCount = uniqueLoans.length;
-    } else {
-      this.data.loans = [];
-      loanCount = 0;
-    }
-
-    // 5. Storage Locations
-    if (Array.isArray(sheetData.Storage_Locations) && sheetData.Storage_Locations.length > 1) {
-      const rows = sheetData.Storage_Locations.slice(1);
-      const parsedLocs = rows.map((row, idx) => ({
-        id: idx + 1,
-        code: String(row[0] || '').trim(),
-        building: String(row[1] || '').trim(),
-        room: String(row[2] || '').trim(),
-        cabinet: String(row[3] || '').trim(),
-        shelf: String(row[4] || '').trim(),
-        folder: String(row[5] || '').trim(),
-        description: String(row[6] || '').trim()
-      })).filter(l => l.code);
-
-      const uniqueLocs = [];
-      const seenLocCodes = new Set();
-      parsedLocs.forEach(l => {
-        const lcode = String(l.code).toLowerCase();
-        if (!seenLocCodes.has(lcode) && !deletedLocs.includes(lcode)) {
-          seenLocCodes.add(lcode);
-          uniqueLocs.push(l);
-        }
-      });
-
-      this.data.storage_locations = uniqueLocs;
-      locCount = uniqueLocs.length;
-    } else {
-      this.data.storage_locations = [];
-      locCount = 0;
-    }
-
-    // 6. Users
-    let userCount = 0;
-    if (Array.isArray(sheetData.Users) && sheetData.Users.length > 1) {
-      const rows = sheetData.Users.slice(1);
-      const parsedUsers = rows.map((row, idx) => ({
-        id: idx + 1,
-        username: String(row[0] || '').trim(),
-        title: String(row[1] || '').trim(),
-        first_name: String(row[2] || '').trim(),
-        last_name: String(row[3] || '').trim(),
-        role_code: String(row[4] || 'staff').trim(),
-        email: String(row[5] || '').trim(),
-        status: 'active',
-        created_at: String(row[6] || '').trim(),
-        password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim()
-      })).filter(u => u.username);
-
-      const uniqueUsers = [];
-      const seenUsernames = new Set();
-      parsedUsers.forEach(u => {
-        const uname = String(u.username).toLowerCase();
-        if (!seenUsernames.has(uname) && !deletedUsers.includes(uname)) {
-          seenUsernames.add(uname);
-          uniqueUsers.push(u);
-        }
-      });
-
-      this.data.users = uniqueUsers;
-      userCount = uniqueUsers.length;
-    } else {
-      if (!this.data.users || this.data.users.length === 0) {
-        this.seedUsers();
-      }
-      userCount = this.data.users.length;
-    }
-
-    // 7. Settings
-    const settingsRowsData = sheetData.Settings || sheetData.settings || sheetData['ตั้งค่าระบบ'];
-    if (Array.isArray(settingsRowsData) && settingsRowsData.length > 1) {
-      const rows = settingsRowsData.slice(1);
-      const parsedSettings = { ...this.data.settings };
-      rows.forEach(row => {
-        const key = String(row[0] || '').trim();
-        const val = String(row[1] || '').trim();
-        if (key) {
-          parsedSettings[key] = val;
-        }
-      });
-      this.data.settings = parsedSettings;
-    }
-
-        this.DB_STATE.lastFetchAt = new Date().toLocaleString('th-TH');
-        this.DB_STATE.lastSyncStatus = 'success';
-        console.log('[DB] Remote data loaded');
-
-        const newFingerprint = getFingerprint(this.data);
-        const dataChanged = (oldFingerprint !== newFingerprint);
-
-        return { studentCount, docCount, bookCount, loanCount, locCount, userCount, dataChanged };
-      } catch (fetchErr) {
-        this.DB_STATE.lastSyncStatus = 'error';
-        throw fetchErr;
-      } finally {
-        this.DB_STATE.fetching = false;
-        this.currentSource = this.DATA_SOURCE.LOCAL;
-        this.fetchPromise = null;
-      }
-    })();
-
-    return this.fetchPromise;
+    return { studentCount, docCount, bookCount, loanCount, locCount, userCount, dataChanged };
+  } catch (fetchErr) {
+    this.DB_STATE.lastSyncStatus = 'error';
+    throw fetchErr;
+  } finally {
+    this.DB_STATE.fetching = false;
+    this.currentSource = this.DATA_SOURCE.LOCAL;
+    this.fetchPromise = null;
   }
+})();
+
+return this.fetchPromise;
+}
+
+applySheetData(sheetData) {
+  if (!sheetData || typeof sheetData !== 'object') return;
+  this.data.is_mock_cleared = true;
+
+  if (!this.data.deleted_keys) {
+    this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
+  }
+
+  const deletedUsers = (this.data.deleted_keys.users || []).map(k => String(k).toLowerCase());
+  const deletedStudents = (this.data.deleted_keys.students || []).map(k => String(k).toLowerCase());
+  const deletedDocs = (this.data.deleted_keys.documents || []).map(k => String(k).toLowerCase());
+  const deletedBooks = (this.data.deleted_keys.books || []).map(k => String(k).toLowerCase());
+  const deletedLoans = (this.data.deleted_keys.loans || []).map(k => String(k).toLowerCase());
+  const deletedLocs = (this.data.deleted_keys.storage_locations || []).map(k => String(k).toLowerCase());
+
+  const extractUrl = (rawStr) => {
+    if (!rawStr) return '';
+    const str = String(rawStr).trim();
+    const match = str.match(/HYPERLINK\("([^"]+)"/i);
+    if (match) return match[1];
+    if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('blob:')) return str;
+    return str;
+  };
+
+  // 1. Students
+  if (Array.isArray(sheetData.Students) && sheetData.Students.length > 1) {
+    const rows = sheetData.Students.slice(1);
+    const parsedStudents = rows.map((row, idx) => ({
+      id: idx + 1,
+      student_id: String(row[0] || '').trim(),
+      prefix: String(row[1] || '').trim(),
+      first_name: String(row[2] || '').trim(),
+      last_name: String(row[3] || '').trim(),
+      previous_name: String(row[4] || '').trim(),
+      grade_level: String(row[5] || '').trim(),
+      academic_year: String(row[6] || '').trim(),
+      doc_number: String(row[7] || '').trim(),
+      set_number: String(row[8] || '').trim(),
+      book_number: String(row[8] || '').trim(),
+      file_url: row.length >= 12 ? extractUrl(row[9]) : '',
+      file_url_back: row.length >= 12 ? extractUrl(row[10]) : '',
+      status: String((row.length >= 12 ? row[11] : row[9]) || 'graduated').trim()
+    })).filter(s => s.student_id);
+
+    const uniqueStudents = [];
+    const seenStudentIds = new Set();
+    parsedStudents.forEach(s => {
+      const sid = String(s.student_id).toLowerCase();
+      if (!seenStudentIds.has(sid) && !deletedStudents.includes(sid)) {
+        seenStudentIds.add(sid);
+        uniqueStudents.push(s);
+      }
+    });
+
+    this.data.students = uniqueStudents;
+  } else if (sheetData.Students) {
+    this.data.students = [];
+  }
+
+  // 2. Documents
+  if (Array.isArray(sheetData.Documents) && sheetData.Documents.length > 1) {
+    const rows = sheetData.Documents.slice(1);
+    const parsedDocs = rows.map((row, idx) => {
+      let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
+
+      if (row.length >= 12) {
+        docCode = String(row[0] || '').trim();
+        stdId = String(row[1] || '').trim();
+        stdName = String(row[2] || '').trim();
+        docTypeCode = String(row[3] || 'ปพ.1').trim();
+        gradYear = String(row[4] || '2565').trim();
+        setNo = String(row[5] || '01').trim();
+        docNum = String(row[6] || '001').trim();
+        status = String(row[7] || 'stored').trim();
+        locationCode = String(row[8] || '').trim();
+        fileName = String(row[9] || '').trim();
+        rawDriveUrl = String(row[10] || '').trim();
+        rawDriveUrlBack = String(row[11] || '').trim();
+      } else if (row.length >= 9) {
+        docCode = String(row[0] || '').trim();
+        stdId = String(row[1] || '').trim();
+        stdName = String(row[2] || '').trim();
+        docTypeCode = String(row[3] || 'ปพ.1').trim();
+        gradYear = String(row[4] || '2565').trim();
+        setNo = String(row[5] || '01').trim();
+        docNum = String(row[6] || '001').trim();
+        status = String(row[7] || 'stored').trim();
+        locationCode = String(row[8] || '').trim();
+      } else {
+        docCode = String(row[0] || '').trim();
+        docTypeCode = String(row[1] || 'ปพ.1').trim();
+        gradYear = String(row[2] || '2565').trim();
+        setNo = String(row[3] || '01').trim();
+        docNum = String(row[4] || '001').trim();
+        status = String(row[5] || 'stored').trim();
+        locationCode = String(row[6] || '').trim();
+      }
+
+      const driveUrl = extractUrl(rawDriveUrl);
+      const driveUrlBack = extractUrl(rawDriveUrlBack);
+
+      return this.sanitizeDocumentItem({
+        id: idx + 1,
+        doc_code: docCode || `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`,
+        student_id: stdId,
+        student_name: stdName,
+        doc_type_code: docTypeCode,
+        academic_year: gradYear,
+        book_number: setNo,
+        doc_number: docNum,
+        status: status,
+        location_code: locationCode,
+        file_name: fileName || `ปพ_${gradYear}_${setNo}_${docNum}.pdf`,
+        file_url: driveUrl,
+        file_url_back: driveUrlBack,
+        book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
+        file_size: driveUrl.includes('drive') ? 'Google Drive' : 'N/A'
+      });
+    }).filter(d => d.doc_code || d.doc_number || d.student_id);
+
+    const uniqueDocs = [];
+    const seenDocCodes = new Set();
+    parsedDocs.forEach(d => {
+      const dcode = String(d.doc_code).toLowerCase();
+      if (!seenDocCodes.has(dcode) && !deletedDocs.includes(dcode)) {
+        seenDocCodes.add(dcode);
+        uniqueDocs.push(d);
+      }
+    });
+
+    this.data.documents = uniqueDocs;
+  } else if (sheetData.Documents) {
+    this.data.documents = [];
+  }
+
+  // 3. Books
+  if (Array.isArray(sheetData.Books) && sheetData.Books.length > 1) {
+    const rows = sheetData.Books.slice(1);
+    const parsedBooks = rows.map((row, idx) => {
+      const sNo = String(row[4] || '').trim();
+      const eNo = String(row[5] || '').trim();
+      const sNum = parseInt(sNo.replace(/\D/g, ''));
+      const eNum = parseInt(eNo.replace(/\D/g, ''));
+      const calcCount = (!isNaN(sNum) && !isNaN(eNum) && eNum >= sNum) ? (eNum - sNum + 1) : (parseInt(row[6]) || 50);
+
+      return {
+        id: idx + 1,
+        book_code: String(row[0] || '').trim(),
+        doc_type_code: String(row[1] || '').trim(),
+        academic_year: String(row[2] || '').trim(),
+        book_number: String(row[3] || '').trim(),
+        start_no: sNo,
+        end_no: eNo,
+        item_count: calcCount,
+        location_code: String(row[7] || '').trim(),
+        status: 'active'
+      };
+    }).filter(b => b.book_code);
+
+    const uniqueBooks = [];
+    const seenBookCodes = new Set();
+    parsedBooks.forEach(b => {
+      const bcode = String(b.book_code).toLowerCase();
+      if (!seenBookCodes.has(bcode) && !deletedBooks.includes(bcode)) {
+        seenBookCodes.add(bcode);
+        uniqueBooks.push(b);
+      }
+    });
+
+    this.data.books = uniqueBooks;
+  } else if (sheetData.Books) {
+    this.data.books = [];
+  }
+
+  // 4. Loans / Document Copy Requests
+  if (Array.isArray(sheetData.Loans) && sheetData.Loans.length > 1) {
+    const rows = sheetData.Loans.slice(1);
+    const parsedLoans = rows.map((row, idx) => {
+      const item = {
+        id: idx + 1,
+        loan_code: String(row[0] || '').trim(),
+        student_id: String(row[1] || '').trim(),
+        student_name: String(row[2] || '').trim(),
+        doc_type_code: String(row[3] || 'ปพ.1').trim(),
+        borrower_name: String(row[4] || '').trim(),
+        borrower_dept: String(row[5] || '').trim(),
+        loan_date: String(row[6] || '').trim(),
+        return_due_date: String(row[7] || '').trim(),
+        reason: String(row[8] || '').trim(),
+        status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
+      };
+      return this.sanitizeLoanItem(item);
+    }).filter(l => l.loan_code);
+
+    const uniqueLoans = [];
+    const seenLoanCodes = new Set();
+    parsedLoans.forEach(l => {
+      const lcode = String(l.loan_code).toLowerCase();
+      if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
+        seenLoanCodes.add(lcode);
+        uniqueLoans.push(l);
+      }
+    });
+
+    this.data.loans = uniqueLoans;
+  } else if (sheetData.Loans) {
+    this.data.loans = [];
+  }
+
+  // 5. Storage Locations
+  if (Array.isArray(sheetData.Storage_Locations) && sheetData.Storage_Locations.length > 1) {
+    const rows = sheetData.Storage_Locations.slice(1);
+    const parsedLocs = rows.map((row, idx) => ({
+      id: idx + 1,
+      code: String(row[0] || '').trim(),
+      building: String(row[1] || '').trim(),
+      room: String(row[2] || '').trim(),
+      cabinet: String(row[3] || '').trim(),
+      shelf: String(row[4] || '').trim(),
+      folder: String(row[5] || '').trim(),
+      description: String(row[6] || '').trim()
+    })).filter(l => l.code);
+
+    const uniqueLocs = [];
+    const seenLocCodes = new Set();
+    parsedLocs.forEach(l => {
+      const lcode = String(l.code).toLowerCase();
+      if (!seenLocCodes.has(lcode) && !deletedLocs.includes(lcode)) {
+        seenLocCodes.add(lcode);
+        uniqueLocs.push(l);
+      }
+    });
+
+    this.data.storage_locations = uniqueLocs;
+  } else if (sheetData.Storage_Locations) {
+    this.data.storage_locations = [];
+  }
+
+  // 6. Users
+  if (Array.isArray(sheetData.Users) && sheetData.Users.length > 1) {
+    const rows = sheetData.Users.slice(1);
+    const parsedUsers = rows.map((row, idx) => ({
+      id: idx + 1,
+      username: String(row[0] || '').trim(),
+      title: String(row[1] || '').trim(),
+      first_name: String(row[2] || '').trim(),
+      last_name: String(row[3] || '').trim(),
+      role_code: String(row[4] || 'staff').trim(),
+      email: String(row[5] || '').trim(),
+      status: 'active',
+      created_at: String(row[6] || '').trim(),
+      password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim()
+    })).filter(u => u.username);
+
+    const uniqueUsers = [];
+    const seenUsernames = new Set();
+    parsedUsers.forEach(u => {
+      const uname = String(u.username).toLowerCase();
+      if (!seenUsernames.has(uname) && !deletedUsers.includes(uname)) {
+        seenUsernames.add(uname);
+        uniqueUsers.push(u);
+      }
+    });
+
+    this.data.users = uniqueUsers;
+  }
+
+  // 7. Settings
+  const settingsRowsData = sheetData.Settings || sheetData.settings || sheetData['ตั้งค่าระบบ'];
+  if (Array.isArray(settingsRowsData) && settingsRowsData.length > 1) {
+    const rows = settingsRowsData.slice(1);
+    const parsedSettings = { ...this.data.settings };
+    rows.forEach(row => {
+      const key = String(row[0] || '').trim();
+      const val = String(row[1] || '').trim();
+      if (key) {
+        parsedSettings[key] = val;
+      }
+    });
+    this.data.settings = parsedSettings;
+  }
+
+  this.cleanupDeletedKeys();
+  this.sanitizeAllData();
+}
 
   clearMockData() {
     this.data.is_mock_cleared = true;
@@ -1004,7 +1029,7 @@ class RelationalDatabase {
     };
 
     let attempts = 0;
-    const maxRetries = 3;
+    const maxRetries = 5;
     let lastErr = null;
 
     try {
@@ -1039,18 +1064,28 @@ class RelationalDatabase {
 
           if (json.status === 'error' && (json.code === 'LOCK_TIMEOUT' || String(json.message).includes('Lock Timeout') || String(json.message).includes('อุปกรณ์อื่นกำลังบันทึก'))) {
             if (attempts <= maxRetries) {
-              console.warn('[DB] Lock timeout');
-              console.warn(`[DB] Retrying ${attempts}/${maxRetries}`);
+              const backoffMs = attempts * 1500 + Math.floor(Math.random() * 1500);
+              console.warn(`[DB] Lock timeout on attempt ${attempts}/${maxRetries}. Waiting ${backoffMs}ms...`);
               if (window.utils && window.utils.showToast) {
                 window.utils.showToast(`มีผู้ใช้อื่นกำลังบันทึกข้อมูลอยู่ ระบบกำลังลองใหม่อีกครั้ง (${attempts}/${maxRetries})...`, 'warning', 3000);
               }
-              await new Promise(r => setTimeout(r, attempts * 1000));
+              await new Promise(r => setTimeout(r, backoffMs));
               continue;
             }
           }
 
           if (json.status !== 'success') {
             throw new Error(json.message || 'ซิงก์ข้อมูลไป Google Sheets ไม่สำเร็จ');
+          }
+
+          if (json.data) {
+            this.applySheetData(json.data);
+            try {
+              localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
+            } catch (e) {}
+            if (window.router && typeof window.router.handleRoute === 'function') {
+              window.router.handleRoute();
+            }
           }
 
           this.lastSyncTime = new Date().toLocaleString('th-TH');
@@ -1064,9 +1099,9 @@ class RelationalDatabase {
         } catch (fetchErr) {
           lastErr = fetchErr;
           if (attempts <= maxRetries && (fetchErr.message.includes('Lock Timeout') || fetchErr.message.includes('อุปกรณ์อื่นกำลังบันทึก'))) {
-            console.warn('[DB] Lock timeout');
-            console.warn(`[DB] Retrying ${attempts}/${maxRetries}`);
-            await new Promise(r => setTimeout(r, attempts * 1000));
+            const backoffMs = attempts * 1500 + Math.floor(Math.random() * 1500);
+            console.warn(`[DB] Lock timeout exception on attempt ${attempts}/${maxRetries}. Retrying in ${backoffMs}ms...`);
+            await new Promise(r => setTimeout(r, backoffMs));
             continue;
           }
           this.lastSyncError = fetchErr.message;

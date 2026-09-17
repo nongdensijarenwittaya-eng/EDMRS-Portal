@@ -457,7 +457,30 @@ const documentsView = {
               return;
             }
 
-            const docCode = `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`;
+            let matchedBook = (window.db.data.books || []).find(b =>
+              String(b.book_number || '').replace(/\D/g, '') === String(setNo).replace(/\D/g, '') &&
+              String(b.academic_year || '').trim() === String(gradYear).trim()
+            );
+            const finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${docTypeCode.replace(/[\.\s]/g, '')}-${gradYear}-${setNo}`;
+
+            if (!window.db.data.books) window.db.data.books = [];
+            let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode);
+            if (!targetBookObj) {
+              targetBookObj = {
+                id: window.db.data.books.length + 1,
+                book_code: finalBookCode,
+                doc_type_code: docTypeCode,
+                academic_year: gradYear,
+                book_number: setNo,
+                start_no: '001',
+                end_no: '050',
+                item_count: 0,
+                location_code: locationCode || 'LOC-A01-01-01'
+              };
+              window.db.data.books.unshift(targetBookObj);
+            }
+
+            const docCode = `DOC-${docTypeCode.replace(/[\.\s]/g, '')}-${studentId || docNum}`;
             const newDoc = {
               id: window.db.data.documents.length + 1,
               doc_code: docCode,
@@ -466,7 +489,7 @@ const documentsView = {
               doc_type_code: docTypeCode,
               academic_year: gradYear,
               doc_number: docNum,
-              book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
+              book_code: finalBookCode,
               book_number: setNo,
               page_number: docNum,
               date_created: new Date().toISOString().slice(0, 10),
@@ -474,7 +497,8 @@ const documentsView = {
               location_code: locationCode,
               file_name: fileName,
               file_url: fileUrl,
-              file_size: driveUrlVal ? 'Google Drive' : '1.5 MB'
+              file_size: driveUrlVal ? 'Google Drive' : '1.5 MB',
+              updated_at: new Date().toISOString()
             };
 
             // 2-Way Sync: Update matching student record if present

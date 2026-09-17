@@ -412,8 +412,35 @@ const studentsView = {
             return false;
           }
 
-          const selectedBookObj = books.find(b => b.book_code === bookCodeSelect);
-          const finalBookCode = selectedBookObj ? selectedBookObj.book_code : (bookCodeSelect && bookCodeSelect !== 'CUSTOM' ? bookCodeSelect : `BOOK-P1-${academicYear}-${setNumber}`);
+          let matchedBook = books.find(b => b.book_code === bookCodeSelect);
+          if (!matchedBook && setNumber && academicYear) {
+            const cleanSet = String(setNumber).replace(/\D/g, '');
+            matchedBook = books.find(b =>
+              String(b.book_number || '').replace(/\D/g, '') === cleanSet &&
+              String(b.academic_year || '').trim() === String(academicYear).trim()
+            );
+          }
+
+          const docTypeCode = matchedBook ? matchedBook.doc_type_code : 'ปพ.1';
+          const cleanType = docTypeCode.replace(/[\.\s]/g, '');
+          const finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${cleanType}-${academicYear}-${String(setNumber).padStart(2, '0')}`;
+
+          if (!window.db.data.books) window.db.data.books = [];
+          let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode);
+          if (!targetBookObj) {
+            targetBookObj = {
+              id: window.db.data.books.length + 1,
+              book_code: finalBookCode,
+              doc_type_code: docTypeCode,
+              academic_year: academicYear,
+              book_number: setNumber,
+              start_no: '001',
+              end_no: '050',
+              item_count: 0,
+              location_code: 'LOC-A01-01-01'
+            };
+            window.db.data.books.unshift(targetBookObj);
+          }
 
           if (isEdit) {
             const idx = window.db.data.students.findIndex(s => s.student_id === studentId);
@@ -428,7 +455,8 @@ const studentsView = {
                 first_name: firstName,
                 last_name: lastName,
                 grade_level: gradeLevel,
-                academic_year: academicYear
+                academic_year: academicYear,
+                updated_at: new Date().toISOString()
               };
               window.db.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${prefix}${firstName} ${lastName} (${studentId}) [เชื่อมเล่ม ${finalBookCode}]`);
             }
@@ -451,41 +479,44 @@ const studentsView = {
               academic_year: academicYear,
               status: 'graduated',
               file_url: '',
-              file_url_back: ''
+              file_url_back: '',
+              updated_at: new Date().toISOString()
             };
             window.db.data.students.unshift(newObj);
             window.db.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียนใหม่ ${prefix}${firstName} ${lastName} (${studentId}) [เชื่อมเล่ม ${finalBookCode}]`);
           }
 
           // Relational Linkage: Ensure a corresponding document entry exists/is updated in window.db.data.documents linked to this book!
-          const docCode = `DOC-P1-${studentId}`;
+          const docCode = `DOC-${cleanType}-${studentId}`;
           const docIdx = (window.db.data.documents || []).findIndex(d => d.student_id === studentId || d.doc_code === docCode);
           const docObj = {
-            id: docIdx !== -1 ? window.db.data.documents[docIdx].id : window.db.data.documents.length + 1,
+            id: docIdx !== -1 ? window.db.data.documents[docIdx].id : (window.db.data.documents || []).length + 1,
             doc_code: docCode,
             student_id: studentId,
             student_name: `${prefix}${firstName} ${lastName}`,
-            doc_type_code: selectedBookObj ? selectedBookObj.doc_type_code : 'ปพ.1',
+            doc_type_code: docTypeCode,
             academic_year: academicYear,
             book_number: setNumber,
             doc_number: docNumber,
             book_code: finalBookCode,
             status: 'stored',
-            location_code: selectedBookObj ? selectedBookObj.location_code : 'LOC-A01-01-01',
-            file_name: `ปพ1_${studentId}.pdf`,
+            location_code: targetBookObj ? targetBookObj.location_code : 'LOC-A01-01-01',
+            file_name: `${cleanType}_${studentId}.pdf`,
             file_url: '',
-            file_url_back: ''
+            file_url_back: '',
+            updated_at: new Date().toISOString()
           };
 
           if (docIdx !== -1) {
             window.db.data.documents[docIdx] = { ...window.db.data.documents[docIdx], ...docObj };
           } else {
+            if (!window.db.data.documents) window.db.data.documents = [];
             window.db.data.documents.unshift(docObj);
           }
 
-          if (selectedBookObj) {
-            const count = window.db.getDocuments({ book_code: selectedBookObj.book_code }).length;
-            selectedBookObj.item_count = count;
+          if (targetBookObj) {
+            const count = window.db.getDocuments({ book_code: targetBookObj.book_code }).length;
+            targetBookObj.item_count = count;
           }
 
           window.db.save();

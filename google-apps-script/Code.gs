@@ -160,6 +160,59 @@ function recordDeletedKeys(deletedKeysObj) {
 }
 
 /**
+ * ยกเลิกรายการคีย์ที่เคยลบใน "Deleted_Keys" หากคีย์นั้นกลับมาใช้งานใหม่เป็น Active Record
+ */
+function unrecordDeletedKeys(activeKeysObj) {
+  if (!activeKeysObj || typeof activeKeysObj !== "object") return;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Deleted_Keys");
+  if (!sheet || sheet.getLastRow() <= 1) return;
+
+  var activeMap = {};
+  Object.keys(activeKeysObj).forEach(function(cat) {
+    var catLower = String(cat).toLowerCase();
+    var list = activeKeysObj[cat];
+    if (Array.isArray(list)) {
+      list.forEach(function(item) {
+        var key = "";
+        if (typeof item === "string" || typeof item === "number") {
+          key = String(item).trim().toLowerCase();
+        } else if (item && typeof item === "object") {
+          key = String(item.student_id || item.doc_code || item.book_code || item.loan_code || item.code || item.username || item.id || "").trim().toLowerCase();
+        }
+        if (key) {
+          if (!activeMap[catLower]) activeMap[catLower] = {};
+          activeMap[catLower][key] = true;
+        }
+      });
+    }
+  });
+
+  var lastRow = sheet.getLastRow();
+  var values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  var filteredRows = [];
+
+  values.forEach(function(row) {
+    var cat = String(row[0] || "").trim().toLowerCase();
+    var key = String(row[1] || "").trim().toLowerCase();
+    if (cat && key && activeMap[cat] && activeMap[cat][key]) {
+      // Remove from Deleted_Keys sheet because it's active
+    } else if (cat && key) {
+      filteredRows.push(row);
+    }
+  });
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, 3).setValues([["Category", "Deleted Key", "Deleted Timestamp"]]);
+  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#475569").setFontColor("#ffffff");
+  sheet.setFrozenRows(1);
+
+  if (filteredRows.length > 0) {
+    sheet.getRange(2, 1, filteredRows.length, 3).setValues(filteredRows);
+  }
+}
+
+/**
  * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
  */
 /**
@@ -215,7 +268,7 @@ function doPost(e) {
   var hasLock = false;
 
   try {
-    hasLock = lock.tryLock(10000);
+    hasLock = lock.tryLock(30000);
     if (!hasLock) {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
@@ -267,6 +320,15 @@ function doPost(e) {
 
       var deletedKeys = contents.deleted_keys || {};
       recordDeletedKeys(deletedKeys);
+
+      unrecordDeletedKeys({
+        users: contents.users || [],
+        students: contents.students || [],
+        documents: contents.documents || [],
+        books: contents.books || [],
+        loans: contents.loans || [],
+        storage_locations: contents.storage_locations || []
+      });
 
       syncUsersSheet(contents.users || [], deletedKeys.users || []);
       syncStudentsSheet(contents.students || [], deletedKeys.students || []);
