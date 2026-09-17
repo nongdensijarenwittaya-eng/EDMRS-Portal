@@ -212,7 +212,6 @@ function autoFetchFromGoogleSheets(silent = false) {
   const currentDocCount = (window.db.data.documents || []).length;
 
   if (!silent) {
-    console.log('Auto-fetching database from Google Sheets & Drive...');
     if (window.utils && window.utils.showLoadingModal) {
       window.utils.showLoadingModal(
         'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
@@ -222,10 +221,14 @@ function autoFetchFromGoogleSheets(silent = false) {
     }
   }
 
-  window.db.syncFromGoogleSheets(sheetsUrl).then(counts => {
+  const fetchTask = (!silent && !window.db.DB_STATE.initialized)
+    ? window.db.initializeDatabase()
+    : window.db.syncFromGoogleSheets(sheetsUrl);
+
+  fetchTask.then(counts => {
+    if (!counts) return;
     const hasChanged = counts.dataChanged || (counts.studentCount !== currentStudentCount || counts.docCount !== currentDocCount);
     if (!silent) {
-      console.log('Auto fetched from Google Sheets successfully:', counts);
       if (window.utils && window.utils.updateLoadingModalProgress) {
         window.utils.updateLoadingModalProgress(100, 'ดึงข้อมูลสำเร็จ!', `โหลดนักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ, เล่ม ${counts.bookCount} เล่ม`);
       }

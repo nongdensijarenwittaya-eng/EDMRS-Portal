@@ -407,7 +407,8 @@ function syncStudentsSheet(students, deletedKeys) {
   if (Array.isArray(students)) {
     students.forEach(function(s) {
       var sid = String(s.student_id || "").trim();
-      if (sid && !masterDeletedMap[sid.toLowerCase()]) {
+      if (sid) {
+        delete masterDeletedMap[sid.toLowerCase()];
         studentMap[sid.toLowerCase()] = {
           student_id: sid,
           prefix: String(s.prefix || ""),
@@ -505,7 +506,8 @@ function syncDocumentsSheet(documents, deletedKeys) {
       if (!dcode && d.doc_number) {
         dcode = "DOC-" + (d.doc_type_code || "ปพ.1").replace('.', '') + "-" + (d.academic_year || "2565") + "-" + (d.book_number || "01") + "-" + d.doc_number;
       }
-      if (dcode && !masterDeletedMap[dcode.toLowerCase()]) {
+      if (dcode) {
+        delete masterDeletedMap[dcode.toLowerCase()];
         var stdId = String(d.student_id || "");
         var stdName = String(d.student_name || "");
         var docTypeCode = String(d.doc_type_code || "ปพ.1");

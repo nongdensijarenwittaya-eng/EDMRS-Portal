@@ -13,12 +13,18 @@ class RelationalDatabase {
       USER: 'user'
     };
     this.currentSource = this.DATA_SOURCE.LOCAL;
-    this.isSyncing = false;
-    this.hasPendingSync = false;
-    this.saveInProgress = false;
-    this.saveQueued = false;
-    this.lastSyncTime = null;
-    this.lastSyncError = null;
+    this.DB_STATE = {
+      initialized: false,
+      initializing: false,
+      fetching: false,
+      saving: false,
+      lastFetchAt: null,
+      lastSaveAt: null,
+      lastSyncStatus: 'idle',
+      syncMessage: '🟢 เชื่อมต่อแล้ว'
+    };
+    this.fetchPromise = null;
+    this.initializationPromise = null;
 
     console.log('[DB] Initializing...');
 
@@ -168,6 +174,30 @@ class RelationalDatabase {
         });
       }
     }, 1200);
+  }
+
+  async initializeDatabase() {
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = (async () => {
+      this.DB_STATE.initializing = true;
+      try {
+        const res = await this.syncFromGoogleSheets();
+        this.DB_STATE.initialized = true;
+        console.log('[DB] Initialization complete');
+        return res;
+      } catch (err) {
+        console.warn('[DB] Initialization fallback to local cache:', err.message);
+        this.DB_STATE.initialized = true;
+        return null;
+      } finally {
+        this.DB_STATE.initializing = false;
+      }
+    })();
+
+    return this.initializationPromise;
   }
 
   resetToSeed() {
@@ -514,10 +544,19 @@ class RelationalDatabase {
 
   // Real-time Fetch & Sync from Google Sheets Database
   async syncFromGoogleSheets(customUrl) {
-    console.log('[DB] Fetching remote data...');
-    this.currentSource = this.DATA_SOURCE.GOOGLE;
+    if (this.fetchPromise) {
+      console.log('[DB] Fetch already running - reusing existing request');
+      return this.fetchPromise;
+    }
 
-    const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url);
+    this.fetchPromise = (async () => {
+      console.log('[DB] Fetching remote data...');
+      this.DB_STATE.fetching = true;
+      this.DB_STATE.lastSyncStatus = 'fetching';
+      this.currentSource = this.DATA_SOURCE.GOOGLE;
+
+      try {
+        const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url);
     if (!sheetsUrl || !sheetsUrl.includes('script.google.com')) {
       throw new Error('กรุณาระบุ Google Sheets Web App URL ในหน้าตั้งค่าระบบก่อนดำเนินการ');
     }
@@ -770,30 +809,6 @@ class RelationalDatabase {
           student_id: String(row[1] || '').trim(),
           student_name: String(row[2] || '').trim(),
           doc_type_code: String(row[3] || 'ปพ.1').trim(),
-          borrower_name: String(row[4] || '').trim(),
-          borrower_dept: String(row[5] || '').trim(),
-          loan_date: String(row[6] || '').trim(),
-          return_due_date: String(row[7] || '').trim(),
-          reason: String(row[8] || '').trim(),
-          status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
-        };
-        return this.sanitizeLoanItem(item);
-      }).filter(l => l.loan_code);
-
-      const uniqueLoans = [];
-      const seenLoanCodes = new Set();
-      parsedLoans.forEach(l => {
-        const lcode = String(l.loan_code).toLowerCase();
-        if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
-          seenLoanCodes.add(lcode);
-          uniqueLoans.push(l);
-        }
-      });
-
-      this.data.loans = uniqueLoans;
-      loanCount = uniqueLoans.length;
-    } else {
-      this.data.loans = [];
       loanCount = 0;
     }
 
@@ -879,16 +894,25 @@ class RelationalDatabase {
       this.data.settings = parsedSettings;
     }
 
-    this.addAuditLog('Google Sheets', 'ดึงฐานข้อมูลจาก Google Sheets', `ดึงข้อมูลจากชีทสำเร็จ: ${studentCount} นักเรียน, ${docCount} เอกสาร, ${bookCount} เล่ม, ${userCount} ผู้ใช้`);
-    this.save(false);
+        this.DB_STATE.lastFetchAt = new Date().toLocaleString('th-TH');
+        this.DB_STATE.lastSyncStatus = 'success';
+        console.log('[DB] Remote data loaded');
 
-    this.currentSource = this.DATA_SOURCE.LOCAL;
-    console.log('[DB] Remote data loaded');
+        const newFingerprint = getFingerprint(this.data);
+        const dataChanged = (oldFingerprint !== newFingerprint);
 
-    const newFingerprint = getFingerprint(this.data);
-    const dataChanged = (oldFingerprint !== newFingerprint);
+        return { studentCount, docCount, bookCount, loanCount, locCount, userCount, dataChanged };
+      } catch (fetchErr) {
+        this.DB_STATE.lastSyncStatus = 'error';
+        throw fetchErr;
+      } finally {
+        this.DB_STATE.fetching = false;
+        this.currentSource = this.DATA_SOURCE.LOCAL;
+        this.fetchPromise = null;
+      }
+    })();
 
-    return { studentCount, docCount, bookCount, loanCount, locCount, userCount, dataChanged };
+    return this.fetchPromise;
   }
 
   clearMockData() {
