@@ -46,20 +46,26 @@ class AuthSystem {
       window.db.seedUsers();
     }
 
-    // Fast non-blocking sync attempt from Google Sheets with 1.5s timeout
+    let user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
+
     const sheetsUrl = window.db && window.db.data && window.db.data.settings && window.db.data.settings.sheets_url;
     if (sheetsUrl && sheetsUrl.includes('script.google.com')) {
-      try {
-        await Promise.race([
-          window.db.syncFromGoogleSheets(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 1500))
-        ]);
-      } catch (sErr) {
-        console.warn('Live sync attempt on login:', sErr.message);
+      if (!user) {
+        // Uncached account: perform a live fetch from Google Sheets with 4s timeout
+        try {
+          await Promise.race([
+            window.db.syncFromGoogleSheets(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 4000))
+          ]);
+        } catch (sErr) {
+          console.warn('Live sync attempt on login:', sErr.message);
+        }
+        user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
+      } else {
+        // Cached account: trigger silent background sync without blocking login
+        window.db.syncFromGoogleSheets().catch(() => {});
       }
     }
-
-    let user = (window.db.data.users || []).find(u => String(u.username || '').trim().toLowerCase() === cleanUsername);
 
     if (!user) {
       return { success: false, message: 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง' };
