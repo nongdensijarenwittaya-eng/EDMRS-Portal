@@ -256,7 +256,9 @@ const dashboardView = {
     if (refreshBtn) {
       refreshBtn.onclick = () => {
         window.utils.showToast('อัปเดตข้อมูลแดชบอร์ดเรียบร้อยแล้ว', 'success');
-        this.refreshDashboard();
+        if (window.router && typeof window.router.handleRoute === 'function') {
+          window.router.handleRoute();
+        }
       };
     }
 
