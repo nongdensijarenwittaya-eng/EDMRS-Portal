@@ -144,6 +144,10 @@ class RelationalDatabase {
       this.DB_STATE.fetching = true;
       this.DB_STATE.lastSyncStatus = 'fetching';
 
+      if (window.utils && typeof window.utils.showLoadingModal === 'function') {
+        window.utils.showLoadingModal('กำลังเชื่อมต่อดึงข้อมูลจาก Google Sheets...', 'ระบบกำลังโหลดข้อมูลล่าสุดเพื่อความแม่นยำ 100% (โปรดรอสักครู่)');
+      }
+
       try {
         if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
           this.googleSyncDisabled = true;
@@ -201,6 +205,10 @@ class RelationalDatabase {
         this.DB_STATE.lastSyncStatus = 'success';
         console.log(`[DB][GET] Success: Fetched ${studentCount} students, ${docCount} documents, ${bookCount} books`);
 
+        if (window.utils && typeof window.utils.updateLoadingModalProgress === 'function') {
+          window.utils.updateLoadingModalProgress(100, 'โหลดข้อมูลสำเร็จ!', `พร้อมใช้งาน (${studentCount} นักเรียน, ${docCount} เอกสาร)`);
+        }
+
         return { studentCount, docCount, bookCount };
       } catch (fetchErr) {
         this.DB_STATE.lastSyncStatus = 'error';
@@ -209,6 +217,11 @@ class RelationalDatabase {
       } finally {
         this.DB_STATE.fetching = false;
         this.fetchPromise = null;
+        setTimeout(() => {
+          if (window.utils && typeof window.utils.hideLoadingModal === 'function') {
+            window.utils.hideLoadingModal();
+          }
+        }, 300);
       }
     })();
 
@@ -630,14 +643,373 @@ class RelationalDatabase {
     return { students, documents, books, loans, locations };
   }
 
-  // Helper Accessors
-  getStudents() { return this.data.students || []; }
-  getStudentById(id) { return (this.data.students || []).find(s => String(s.student_id) === String(id)); }
-  getDocuments() { return this.data.documents || []; }
-  getBooks() { return this.data.books || []; }
-  getLoans() { return this.data.loans || []; }
-  getLocations() { return this.data.storage_locations || []; }
-  getUsers() { return this.data.users || []; }
+  // ==========================================
+  // In-Memory Search & Query Accessors
+  // ==========================================
+  getStudents(filters = {}) {
+    let list = this.data.students || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(s =>
+        String(s.student_id || '').toLowerCase().includes(q) ||
+        String(s.first_name || '').toLowerCase().includes(q) ||
+        String(s.last_name || '').toLowerCase().includes(q) ||
+        String(s.doc_number || '').toLowerCase().includes(q) ||
+        `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.toLowerCase().includes(q)
+      );
+    }
+    if (filters.academic_year) {
+      list = list.filter(s => String(s.academic_year) === String(filters.academic_year));
+    }
+    if (filters.grade_level) {
+      list = list.filter(s => String(s.grade_level) === String(filters.grade_level));
+    }
+    return list;
+  }
+
+  getStudentById(id) {
+    return (this.data.students || []).find(s => String(s.student_id) === String(id));
+  }
+
+  getDocuments(filters = {}) {
+    let list = this.data.documents || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(d =>
+        String(d.doc_code || '').toLowerCase().includes(q) ||
+        String(d.student_id || '').toLowerCase().includes(q) ||
+        String(d.student_name || '').toLowerCase().includes(q) ||
+        String(d.doc_number || '').toLowerCase().includes(q)
+      );
+    }
+    if (filters.book_code) {
+      list = list.filter(d => String(d.book_code) === String(filters.book_code));
+    }
+    if (filters.doc_type_code) {
+      list = list.filter(d => String(d.doc_type_code) === String(filters.doc_type_code));
+    }
+    if (filters.academic_year) {
+      list = list.filter(d => String(d.academic_year) === String(filters.academic_year));
+    }
+    return list;
+  }
+
+  getBooks(filters = {}) {
+    let list = this.data.books || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(b =>
+        String(b.book_code || '').toLowerCase().includes(q) ||
+        String(b.doc_type_code || '').toLowerCase().includes(q) ||
+        String(b.academic_year || '').toLowerCase().includes(q) ||
+        String(b.book_number || '').toLowerCase().includes(q) ||
+        String(b.location_code || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  getLoans(filters = {}) {
+    let list = this.data.loans || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(l =>
+        String(l.loan_code || '').toLowerCase().includes(q) ||
+        String(l.student_id || '').toLowerCase().includes(q) ||
+        String(l.student_name || '').toLowerCase().includes(q) ||
+        String(l.borrower_name || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  getLocations(filters = {}) {
+    let list = this.data.storage_locations || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(l =>
+        String(l.code || '').toLowerCase().includes(q) ||
+        String(l.building || '').toLowerCase().includes(q) ||
+        String(l.room || '').toLowerCase().includes(q) ||
+        String(l.cabinet || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  getUsers(filters = {}) {
+    let list = this.data.users || [];
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase().trim();
+      list = list.filter(u =>
+        String(u.username || '').toLowerCase().includes(q) ||
+        String(u.first_name || '').toLowerCase().includes(q) ||
+        String(u.last_name || '').toLowerCase().includes(q) ||
+        String(u.email || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  // ==========================================
+  // Explicit CRUD Methods with Single-Flight Sync
+  // ==========================================
+
+  // --- Student CRUD ---
+  async addStudent(studentData) {
+    if (!studentData.student_id) throw new Error('ต้องระบุรหัสนักเรียน (student_id)');
+    const now = new Date().toISOString();
+    const newStudent = {
+      id: (this.data.students || []).length + 1,
+      ...studentData,
+      updated_at: now
+    };
+    if (!this.data.students) this.data.students = [];
+    this.data.students.unshift(newStudent);
+    this.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียน ${studentData.first_name} ${studentData.last_name} (${studentData.student_id})`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateStudent(studentId, studentData) {
+    if (!studentId) throw new Error('ต้องระบุรหัสนักเรียนสำหรับอัปเดต');
+    const idx = (this.data.students || []).findIndex(s => String(s.student_id) === String(studentId));
+    if (idx === -1) throw new Error(`ไม่พบนักเรียนรหัส ${studentId}`);
+    
+    this.data.students[idx] = {
+      ...this.data.students[idx],
+      ...studentData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${studentId}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteStudent(studentId) {
+    if (!studentId) throw new Error('ต้องระบุรหัสนักเรียนสำหรับลบ');
+    const sidStr = String(studentId).trim();
+    this.data.students = (this.data.students || []).filter(s => String(s.student_id).trim() !== sidStr);
+    
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.students) this.data.deleted_keys.students = [];
+    this.data.deleted_keys.students.push(sidStr);
+
+    this.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูล', `ลบนักเรียนรหัส ${studentId}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
+  // --- Document CRUD ---
+  async addDocument(docData) {
+    if (!docData.doc_code) throw new Error('ต้องระบุรหัสเอกสาร (doc_code)');
+    const newDoc = {
+      id: (this.data.documents || []).length + 1,
+      ...docData,
+      updated_at: new Date().toISOString()
+    };
+    if (!this.data.documents) this.data.documents = [];
+    this.data.documents.unshift(newDoc);
+    this.addAuditLog('เอกสาร ปพ.', 'เพิ่มเอกสาร', `เพิ่มเอกสาร ${docData.doc_code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateDocument(docCode, docData) {
+    const idx = (this.data.documents || []).findIndex(d => String(d.doc_code) === String(docCode));
+    if (idx === -1) throw new Error(`ไม่พบเอกสารรหัส ${docCode}`);
+    
+    this.data.documents[idx] = {
+      ...this.data.documents[idx],
+      ...docData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('เอกสาร ปพ.', 'แก้ไขเอกสาร', `แก้ไขเอกสาร ${docCode}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteDocument(docCode, docId) {
+    const codeStr = String(docCode || docId).trim();
+    this.data.documents = (this.data.documents || []).filter(d => String(d.doc_code).trim() !== codeStr && String(d.id) !== String(docId));
+    
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.documents) this.data.deleted_keys.documents = [];
+    this.data.deleted_keys.documents.push(codeStr);
+
+    this.addAuditLog('เอกสาร ปพ.', 'ลบเอกสาร', `ลบเอกสาร ${codeStr}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
+  // --- Book CRUD ---
+  async addBook(bookData) {
+    if (!bookData.book_code) throw new Error('ต้องระบุรหัสเล่ม (book_code)');
+    const newBook = {
+      id: (this.data.books || []).length + 1,
+      ...bookData,
+      updated_at: new Date().toISOString()
+    };
+    if (!this.data.books) this.data.books = [];
+    this.data.books.unshift(newBook);
+    this.addAuditLog('ทะเบียนเล่ม', 'เพิ่มเล่ม', `เพิ่มเล่ม ${bookData.book_code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateBook(bookCode, bookData) {
+    const idx = (this.data.books || []).findIndex(b => String(b.book_code) === String(bookCode));
+    if (idx === -1) throw new Error(`ไม่พบเล่มเอกสารรหัส ${bookCode}`);
+
+    this.data.books[idx] = {
+      ...this.data.books[idx],
+      ...bookData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('ทะเบียนเล่ม', 'แก้ไขเล่ม', `แก้ไขเล่ม ${bookCode}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteBook(bookCode) {
+    const bcodeStr = String(bookCode).trim();
+    this.data.books = (this.data.books || []).filter(b => String(b.book_code).trim() !== bcodeStr);
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.books) this.data.deleted_keys.books = [];
+    this.data.deleted_keys.books.push(bcodeStr);
+
+    this.addAuditLog('ทะเบียนเล่ม', 'ลบเล่ม', `ลบเล่มรหัส ${bookCode}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
+  // --- Loan CRUD ---
+  async addLoan(loanData) {
+    if (!loanData.loan_code) throw new Error('ต้องระบุเลขคำขอ (loan_code)');
+    const newLoan = {
+      id: (this.data.loans || []).length + 1,
+      ...loanData,
+      updated_at: new Date().toISOString()
+    };
+    if (!this.data.loans) this.data.loans = [];
+    this.data.loans.unshift(newLoan);
+    this.addAuditLog('คำขอสำเนา', 'เพิ่มคำขอ', `เพิ่มคำขอสำเนา ${loanData.loan_code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateLoan(loanCode, loanData) {
+    const idx = (this.data.loans || []).findIndex(l => String(l.loan_code) === String(loanCode));
+    if (idx === -1) throw new Error(`ไม่พบคำขอรหัส ${loanCode}`);
+
+    this.data.loans[idx] = {
+      ...this.data.loans[idx],
+      ...loanData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('คำขอสำเนา', 'แก้ไขคำขอ', `แก้ไขคำขอ ${loanCode}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteLoan(loanCode, loanId) {
+    const lcodeStr = String(loanCode || loanId).trim();
+    this.data.loans = (this.data.loans || []).filter(l => String(l.loan_code).trim() !== lcodeStr && String(l.id) !== String(loanId));
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.loans) this.data.deleted_keys.loans = [];
+    this.data.deleted_keys.loans.push(lcodeStr);
+
+    this.addAuditLog('คำขอสำเนา', 'ลบคำขอ', `ลบคำขอสำเนา ${lcodeStr}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
+  // --- Location CRUD ---
+  async addLocation(locData) {
+    if (!locData.code) throw new Error('ต้องระบุรหัสตำแหน่ง (code)');
+    const newLoc = {
+      id: (this.data.storage_locations || []).length + 1,
+      ...locData,
+      updated_at: new Date().toISOString()
+    };
+    if (!this.data.storage_locations) this.data.storage_locations = [];
+    this.data.storage_locations.unshift(newLoc);
+    this.addAuditLog('สถานที่จัดเก็บ', 'เพิ่มตำแหน่ง', `เพิ่มตำแหน่ง ${locData.code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateLocation(code, locData) {
+    const idx = (this.data.storage_locations || []).findIndex(l => String(l.code) === String(code));
+    if (idx === -1) throw new Error(`ไม่พบตำแหน่งรหัส ${code}`);
+
+    this.data.storage_locations[idx] = {
+      ...this.data.storage_locations[idx],
+      ...locData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('สถานที่จัดเก็บ', 'แก้ไขตำแหน่ง', `แก้ไขตำแหน่ง ${code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteLocation(code) {
+    const locStr = String(code).trim();
+    this.data.storage_locations = (this.data.storage_locations || []).filter(l => String(l.code).trim() !== locStr);
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.storage_locations) this.data.deleted_keys.storage_locations = [];
+    this.data.deleted_keys.storage_locations.push(locStr);
+
+    this.addAuditLog('สถานที่จัดเก็บ', 'ลบตำแหน่ง', `ลบตำแหน่งรหัส ${code}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
+  // --- User CRUD ---
+  async addUser(userData) {
+    if (!userData.username) throw new Error('ต้องระบุชื่อผู้ใช้งาน (username)');
+    const newUser = {
+      id: (this.data.users || []).length + 1,
+      password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+      ...userData,
+      updated_at: new Date().toISOString()
+    };
+    if (!this.data.users) this.data.users = [];
+    this.data.users.unshift(newUser);
+    this.addAuditLog('ผู้ใช้งาน', 'เพิ่มผู้ใช้', `สร้างบัญชีผู้ใช้ ${userData.username}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'create');
+  }
+
+  async updateUser(username, userData) {
+    const idx = (this.data.users || []).findIndex(u => String(u.username).toLowerCase() === String(username).toLowerCase());
+    if (idx === -1) throw new Error(`ไม่พบบัญชีผู้ใช้ ${username}`);
+
+    this.data.users[idx] = {
+      ...this.data.users[idx],
+      ...userData,
+      updated_at: new Date().toISOString()
+    };
+    this.addAuditLog('ผู้ใช้งาน', 'แก้ไขผู้ใช้', `แก้ไขบัญชีผู้ใช้ ${username}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'update');
+  }
+
+  async deleteUser(username) {
+    const unameStr = String(username).trim().toLowerCase();
+    this.data.users = (this.data.users || []).filter(u => String(u.username).trim().toLowerCase() !== unameStr);
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.users) this.data.deleted_keys.users = [];
+    this.data.deleted_keys.users.push(unameStr);
+
+    this.addAuditLog('ผู้ใช้งาน', 'ลบผู้ใช้', `ลบบัญชีผู้ใช้ ${username}`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
 
   // Seed Helper Methods
   seedRolesAndPermissions() {

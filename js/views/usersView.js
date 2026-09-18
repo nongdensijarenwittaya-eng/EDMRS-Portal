@@ -8,7 +8,7 @@ const usersView = {
   },
 
   render() {
-    let users = window.db.data.users || [];
+    let users = (window.db && window.db.data && Array.isArray(window.db.data.users)) ? window.db.data.users : [];
     if (this.filterState.search) {
       const q = String(this.filterState.search).toLowerCase().trim();
       users = users.filter(u =>
@@ -22,8 +22,10 @@ const usersView = {
         )
       );
     }
-    const roles = window.db.data.roles || [];
-    const canManage = window.authSystem.hasPermission('manage_users');
+
+    const canManage = (window.authSystem && typeof window.authSystem.hasPermission === 'function')
+      ? window.authSystem.hasPermission('manage_users')
+      : true;
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -72,30 +74,45 @@ const usersView = {
               </tr>
             </thead>
             <tbody>
-              ${users.length ? users.map(u => `
+              ${users.length ? users.map(u => {
+                const username = String(u.username || '');
+                const fullName = `${u.title || ''}${u.first_name || ''} ${u.last_name || ''}`.trim() || 'ไม่ระบุชื่อ';
+                const roleCode = String(u.role_code || 'staff').toLowerCase();
+                const email = String(u.email || '-');
+                const createdAt = String(u.created_at || '-');
+                const isSuperAdmin = roleCode === 'super_admin';
+
+                return `
+                  <tr>
+                    <td><strong>${username}</strong></td>
+                    <td>${fullName}</td>
+                    <td>
+                      <span class="badge ${isSuperAdmin ? 'badge-warning' : 'badge-info'}">
+                        ${roleCode.toUpperCase()}
+                      </span>
+                    </td>
+                    <td>${email}</td>
+                    <td><span class="badge badge-success">ใช้งานปกติ</span></td>
+                    <td>${createdAt}</td>
+                    <td style="text-align: center;">
+                      <div style="display: flex; gap: 0.35rem; justify-content: center;">
+                        <button class="btn btn-warning btn-sm edit-user-btn" data-id="${u.id || ''}" data-user="${username}" title="แก้ไขผู้ใช้งาน">
+                          <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn btn-danger btn-sm delete-user-btn" data-id="${u.id || ''}" data-user="${username}" title="ลบผู้ใช้งาน">
+                          <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('') : `
                 <tr>
-                  <td><strong>${u.username}</strong></td>
-                  <td>${u.title || ''}${u.first_name} ${u.last_name}</td>
-                  <td>
-                    <span class="badge ${u.role_code === 'super_admin' ? 'badge-warning' : 'badge-info'}">
-                      ${u.role_code.toUpperCase()}
-                    </span>
-                  </td>
-                  <td>${u.email}</td>
-                  <td><span class="badge badge-success">ใช้งานปกติ</span></td>
-                  <td>${u.created_at || '-'}</td>
-                  <td style="text-align: center;">
-                    <div style="display: flex; gap: 0.35rem; justify-content: center;">
-                      <button class="btn btn-warning btn-sm edit-user-btn" data-id="${u.id}" title="แก้ไขผู้ใช้งาน">
-                        <i class="fa-solid fa-pen-to-square"></i>
-                      </button>
-                      <button class="btn btn-danger btn-sm delete-user-btn" data-id="${u.id}" data-user="${u.username}" title="ลบผู้ใช้งาน">
-                        <i class="fa-solid fa-trash-can"></i>
-                      </button>
-                    </div>
+                  <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    ไม่พบข้อมูลผู้ใช้งานระบบ
                   </td>
                 </tr>
-              `).join('')}
+              `}
             </tbody>
           </table>
         </div>
@@ -127,21 +144,19 @@ const usersView = {
                 { key: 'create_documents', name: 'เพิ่มเอกสาร ปพ.' },
                 { key: 'edit_documents', name: 'แก้ไขเอกสาร ปพ.' },
                 { key: 'delete_documents', name: 'ลบเอกสาร ปพ.' },
-                { key: 'upload_documents', name: 'อัปโหลดเอกสาร Google Drive' },
-                { key: 'download_documents', name: 'ดาวน์โหลดไฟล์เอกสาร' },
-                { key: 'manage_loans', name: 'ยืม-คืนเอกสาร' },
+                { key: 'manage_loans', name: 'จัดการคำขอสำเนาเอกสาร' },
                 { key: 'manage_users', name: 'จัดการผู้ใช้และกำหนดสิทธิ์ (RBAC)' },
-                { key: 'manage_system', name: 'ตั้งค่าระบบ' }
+                { key: 'manage_settings', name: 'ตั้งค่าระบบ' }
               ]).map(p => `
                 <tr>
                   <td><strong>${p.name}</strong> <small style="color: var(--text-muted);">(${p.key})</small></td>
                   <td style="text-align: center;"><i class="fa-solid fa-circle-check text-success"></i></td>
                   <td style="text-align: center;"><i class="fa-solid fa-circle-check text-success"></i></td>
                   <td style="text-align: center;">
-                    ${['view_students', 'create_students', 'edit_students', 'view_documents', 'create_documents', 'edit_documents', 'upload_documents', 'download_documents', 'manage_loans'].includes(p.key) ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-minus text-muted"></i>'}
+                    ${['view_students', 'create_students', 'edit_students', 'view_documents', 'create_documents', 'edit_documents', 'manage_loans'].includes(p.key) ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-minus text-muted"></i>'}
                   </td>
                   <td style="text-align: center;">
-                    ${['view_students', 'view_documents', 'download_documents'].includes(p.key) ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-minus text-muted"></i>'}
+                    ${['view_students', 'view_documents'].includes(p.key) ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-minus text-muted"></i>'}
                   </td>
                 </tr>
               `).join('')}
@@ -188,59 +203,74 @@ const usersView = {
 
     const syncBtn = document.getElementById('sync-users-sheets-btn');
     if (syncBtn) {
-      syncBtn.onclick = () => {
-        window.utils.showToast('กำลังซิงก์ข้อมูลบัญชีผู้ใช้งานระบบลง Google Sheets...', 'info');
-        window.db.syncToGoogleSheets().then(() => {
-          window.utils.showToast('ซิงก์ข้อมูลผู้ใช้งานระบบลง Google Sheets (Users) สำเร็จ!', 'success');
-        }).catch(err => {
-          window.utils.showToast(`ซิงก์ไม่สำเร็จ: ${err.message}`, 'danger');
-        });
+      syncBtn.onclick = async () => {
+        syncBtn.disabled = true;
+        syncBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังซิงก์...';
+        try {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('กำลังซิงก์ข้อมูลบัญชีผู้ใช้งานระบบลง Google Sheets...', 'info');
+          }
+          await window.db.syncToGoogleSheets();
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast('ซิงก์ข้อมูลผู้ใช้งานระบบลง Google Sheets สำเร็จ!', 'success');
+          }
+        } catch (err) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast(`ซิงก์ไม่สำเร็จ: ${err.message}`, 'danger');
+          }
+        } finally {
+          syncBtn.disabled = false;
+          syncBtn.innerHTML = '<i class="fa-solid fa-table text-white"></i> ซิงก์ไปที่ Google Sheets';
+        }
       };
     }
 
     const exportBtn = document.getElementById('export-users-excel-btn');
     if (exportBtn) {
       exportBtn.onclick = () => {
-        const users = window.db.data.users || [];
+        const users = (window.db && window.db.data && Array.isArray(window.db.data.users)) ? window.db.data.users : [];
         const exportData = users.map(u => ({
-          'ชื่อผู้ใช้งาน (Username)': u.username,
-          'คำนำหน้า': u.title,
-          'ชื่อ': u.first_name,
-          'นามสกุล': u.last_name,
-          'บทบาทหน้าที่': u.role_code,
-          'อีเมล': u.email,
+          'ชื่อผู้ใช้งาน (Username)': u.username || '',
+          'คำนำหน้า': u.title || '',
+          'ชื่อ': u.first_name || '',
+          'นามสกุล': u.last_name || '',
+          'บทบาทหน้าที่': u.role_code || '',
+          'อีเมล': u.email || '',
           'วันที่สร้าง': u.created_at || ''
         }));
-        window.utils.exportToExcel('ผู้ใช้งานระบบ', 'Users', exportData);
+        if (window.utils && window.utils.exportToExcel) {
+          window.utils.exportToExcel('ผู้ใช้งานระบบ', 'Users', exportData);
+        }
       };
     }
 
     document.querySelectorAll('.edit-user-btn').forEach(btn => {
       btn.onclick = () => {
-        const id = btn.getAttribute('data-id');
-        const user = (window.db.data.users || []).find(u => u.id == id);
+        const username = btn.getAttribute('data-user');
+        const user = (window.db.data.users || []).find(u => String(u.username).toLowerCase() === String(username).toLowerCase());
         if (user) this.openAddUserModal(user);
       };
     });
 
     document.querySelectorAll('.delete-user-btn').forEach(btn => {
       btn.onclick = () => {
-        const id = btn.getAttribute('data-id');
         const username = btn.getAttribute('data-user');
         window.utils.confirmDialog(
           'ยืนยันการลบบัญชีผู้ใช้งาน',
           `คุณต้องการลบบัญชีผู้ใช้งาน <b>${username}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.deleteUser(username);
-            window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
+            btn.disabled = true;
             try {
-              await window.db.syncToGoogleSheets();
-              window.utils.showToast('ลบบัญชีผู้ใช้งานและซิงก์ Google Sheets เรียบร้อยแล้ว', 'success');
+              await window.db.deleteUser(username);
+              if (window.utils && window.utils.showToast) {
+                window.utils.showToast(`ลบบัญชีผู้ใช้งาน ${username} เรียบร้อยแล้ว`, 'success');
+              }
+              this.refreshPage();
             } catch (err) {
-              console.warn('Sync users on delete:', err);
-              window.utils.showToast('ลบข้อมูลในเครื่องเรียบร้อยแล้ว', 'warning');
+              if (window.utils && window.utils.showToast) {
+                window.utils.showToast(`เกิดข้อผิดพลาดในการลบ: ${err.message}`, 'danger');
+              }
             }
-            this.refreshPage();
           }
         );
       };
@@ -249,12 +279,12 @@ const usersView = {
 
   openAddUserModal(userToEdit = null) {
     const isEdit = !!userToEdit;
-    const uVal = isEdit ? userToEdit.username : '';
+    const uVal = isEdit ? (userToEdit.username || '') : '';
     const tVal = isEdit ? (userToEdit.title || 'นาย') : 'นาย';
-    const fnVal = isEdit ? userToEdit.first_name : '';
-    const lnVal = isEdit ? userToEdit.last_name : '';
-    const rVal = isEdit ? userToEdit.role_code : 'staff';
-    const emVal = isEdit ? userToEdit.email : '';
+    const fnVal = isEdit ? (userToEdit.first_name || '') : '';
+    const lnVal = isEdit ? (userToEdit.last_name || '') : '';
+    const rVal = isEdit ? (userToEdit.role_code || 'staff') : 'staff';
+    const emVal = isEdit ? (userToEdit.email || '') : '';
 
     const bodyHtml = `
       <form id="add-user-form">
@@ -310,7 +340,7 @@ const usersView = {
         {
           text: isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชี',
           class: 'btn btn-primary',
-          onClick: () => {
+          onClick: async () => {
             const u = document.getElementById('modal-user-username').value.trim();
             const p = document.getElementById('modal-user-pass').value;
             const t = document.getElementById('modal-user-title').value;
@@ -324,48 +354,35 @@ const usersView = {
               return false;
             }
 
-            if (isEdit) {
-              userToEdit.title = t;
-              userToEdit.first_name = fn;
-              userToEdit.last_name = ln;
-              userToEdit.role_code = r;
-              userToEdit.email = em;
-              userToEdit.updated_at = new Date().toISOString();
-              window.db.addAuditLog('ผู้ใช้งาน', 'แก้ไขผู้ใช้', `แก้ไขข้อมูลบัญชีผู้ใช้ ${u}`);
-              window.db.save(true, null, true);
+            const modalSubmitBtn = document.querySelector('.modal-footer .btn-primary');
+            if (modalSubmitBtn) { modalSubmitBtn.disabled = true; modalSubmitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...'; }
 
-              window.utils.showToast('กำลังซิงก์การแก้ไขลง Google Sheets...', 'info');
-              window.db.syncToGoogleSheets().then(() => {
-                window.utils.showToast(`แก้ไขข้อมูลผู้ใช้งาน ${u} และซิงก์ Google Sheets เรียบร้อยแล้ว`, 'success');
-              }).catch(err => console.warn('Sync users edit:', err));
+            try {
+              const userData = {
+                username: u,
+                title: t,
+                first_name: fn,
+                last_name: ln,
+                role_code: r,
+                email: em,
+                status: 'active',
+                created_at: isEdit ? userToEdit.created_at : new Date().toISOString().slice(0, 10)
+              };
 
+              if (isEdit) {
+                await window.db.updateUser(u, userData);
+                window.utils.showToast(`แก้ไขข้อมูลผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
+              } else {
+                await window.db.addUser(userData);
+                window.utils.showToast(`สร้างผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
+              }
+
+              window.utils.closeModal();
               this.refreshPage();
-              return;
+            } catch (err) {
+              window.utils.showToast(`เกิดข้อผิดพลาดในการบันทึก: ${err.message}`, 'danger');
+              if (modalSubmitBtn) { modalSubmitBtn.disabled = false; modalSubmitBtn.innerHTML = isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชี'; }
             }
-
-            window.db.data.users.push({
-              id: window.db.data.users.length + 1,
-              username: u,
-              password_hash: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
-              title: t,
-              first_name: fn,
-              last_name: ln,
-              role_code: r,
-              email: em,
-              status: 'active',
-              created_at: new Date().toISOString().slice(0, 10),
-              updated_at: new Date().toISOString()
-            });
-
-            window.db.addAuditLog('ผู้ใช้งาน', 'เพิ่มผู้ใช้', `สร้างผู้ใช้งานใหม่ ${u} (${fn} ${ln}) สิทธิ์ ${r}`);
-            window.db.save(true, null, true);
-
-            window.utils.showToast('กำลังซิงก์ผู้ใช้ใหม่ลง Google Sheets...', 'info');
-            window.db.syncToGoogleSheets().then(() => {
-              window.utils.showToast(`สร้างผู้ใช้งาน ${u} และซิงก์ Google Sheets เรียบร้อยแล้ว`, 'success');
-            }).catch(err => console.warn('Sync users add:', err));
-
-            this.refreshPage();
           }
         }
       ]

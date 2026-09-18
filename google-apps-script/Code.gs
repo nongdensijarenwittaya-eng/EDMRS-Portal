@@ -753,15 +753,21 @@ function syncSettingsSheet(ss, settings) {
 }
 
 /**
- * Batch Read All Sheet Data
+ * Batch Read All Sheet Data (High-Performance Targeted Fetch)
  */
 function getAllSheetData(ss) {
   ss = ss || SpreadsheetApp.getActiveSpreadsheet();
   var result = {};
-  var sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) {
-    var sh = sheets[i];
-    result[sh.getName()] = sh.getDataRange().getValues();
+  var targetSheets = ["Students", "Documents", "Books", "Loans", "Storage_Locations", "Users", "Settings"];
+  
+  for (var i = 0; i < targetSheets.length; i++) {
+    var name = targetSheets[i];
+    var sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() > 0) {
+      result[name] = sh.getDataRange().getValues();
+    } else {
+      result[name] = [];
+    }
   }
   return result;
 }

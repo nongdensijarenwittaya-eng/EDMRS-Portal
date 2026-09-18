@@ -201,19 +201,14 @@ const utils = {
       if (card) card.style.transform = 'scale(1)';
     });
 
-    // Auto-dismiss safety net after 3 seconds max so user is NEVER trapped
-    this._loadingTimeout = setTimeout(() => {
-      this.hideLoadingModal();
-    }, 3000);
-
-    // Continuously tick progress bar up to 90% while fetching data
+    // Progress ticker while fetching
     this._loadingTicker = setInterval(() => {
-      if (this._currentProgress < 90) {
-        this._currentProgress += (90 - this._currentProgress) * 0.12;
+      if (this._currentProgress < 95) {
+        this._currentProgress += (95 - this._currentProgress) * 0.15;
         const bar = document.getElementById('cloud-loading-progress-bar');
-        if (bar) bar.style.width = `${Math.min(90, Math.round(this._currentProgress))}%`;
+        if (bar) bar.style.width = `${Math.min(95, Math.round(this._currentProgress))}%`;
       }
-    }, 180);
+    }, 120);
   },
 
   updateLoadingModalProgress(percent, title, subtitle) {
