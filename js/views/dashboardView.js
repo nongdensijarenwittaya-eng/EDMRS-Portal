@@ -39,9 +39,13 @@ const dashboardView = {
             สรุปข้อมูลสถิติเอกสาร ปพ. นักเรียน ตำแหน่งจัดเก็บ และสถานะคำขอสำเนาเอกสารประจำสถานศึกษา
           </p>
         </div>
-        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+          <span class="badge ${(window.db && window.db.currentSource === window.db.DATA_SOURCE.GOOGLE && !window.db.googleSyncDisabled) ? 'badge-success' : 'badge-warning'}" style="padding: 0.45rem 0.75rem; font-size: 0.8rem; border-radius: 6px;">
+            <i class="fa-solid ${(window.db && window.db.currentSource === window.db.DATA_SOURCE.GOOGLE && !window.db.googleSyncDisabled) ? 'fa-cloud-check' : 'fa-database'}"></i>
+            ${(window.db && window.db.currentSource === window.db.DATA_SOURCE.GOOGLE && !window.db.googleSyncDisabled) ? 'ซิงก์ข้อมูลสดจาก Google Sheets' : 'ข้อมูลแคชในเครื่อง (Local Storage)'}
+          </span>
           <button id="refresh-dashboard-btn" class="btn btn-secondary btn-sm">
-            <i class="fa-solid fa-rotate"></i> รีเฟรชข้อมูล
+            <i class="fa-solid fa-rotate"></i> รีเฟรช & ดึงข้อมูลสด
           </button>
           <a href="#locations" class="btn btn-primary btn-sm">
             <i class="fa-solid fa-boxes-stacked"></i> สถานที่จัดเก็บ
@@ -242,8 +246,23 @@ const dashboardView = {
     const refreshBtn = document.getElementById('refresh-dashboard-btn');
 
     if (refreshBtn) {
-      refreshBtn.onclick = () => {
-        window.utils.showToast('อัปเดตข้อมูลแดชบอร์ดเรียบร้อยแล้ว', 'success');
+      refreshBtn.onclick = async () => {
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast('กำลังซิงก์ดึงข้อมูลล่าสุดจาก Google Sheets...', 'info');
+        }
+        try {
+          window.db.googleSyncDisabled = false;
+          const counts = await window.db.syncFromGoogleSheets();
+          if (counts && window.utils && window.utils.showToast) {
+            window.utils.showToast(`ซิงก์ข้อมูลสดสำเร็จ! (นักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ)`, 'success');
+          } else if (window.utils && window.utils.showToast) {
+            window.utils.showToast('อัปเดตข้อมูลแดชบอร์ดเรียบร้อยแล้ว', 'success');
+          }
+        } catch (err) {
+          if (window.utils && window.utils.showToast) {
+            window.utils.showToast(`แสดงข้อมูลจาก Local Cache (${err.message})`, 'warning');
+          }
+        }
         if (window.router && typeof window.router.handleRoute === 'function') {
           window.router.handleRoute();
         }

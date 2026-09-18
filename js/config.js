@@ -7,13 +7,10 @@ const CONFIG = {
   // Primary Central Web App URL (Google Apps Script)
   GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec',
   
-  // Google Drive Root Vault Folder ID
-  DEFAULT_DRIVE_FOLDER_ID: '1FvbKtV0uFyPUfZPLLfQQHE45oH8fatTv',
-  
   // Application Details
   APP_NAME_TH: 'ระบบจัดเก็บเอกสาร ปพ.',
   APP_NAME_EN: 'EDMRS Portal',
-  VERSION: '2.5.0 Enterprise',
+  VERSION: '3.0.0 Enterprise',
 
   /**
    * Helper: Resolves active Web App URL from Database Settings or default Config
@@ -35,6 +32,7 @@ const CONFIG = {
    * 2) Contain script.google.com
    * 3) Contain /macros/s/
    * 4) End with /exec
+   * 5) NOT contain /dev or script.googleusercontent.com/macros/echo
    */
   validateWebAppUrl(url) {
     if (!url || typeof url !== 'string') return false;

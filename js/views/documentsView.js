@@ -1,6 +1,6 @@
 /* ==========================================================================
    EDMRS - Por.Por. Document Registry View Controller (js/views/documentsView.js)
-   CRUD for documents, file uploads, document type manager & storage linking
+   Pure CRUD for Documents (Google Sheets Backend)
    ========================================================================== */
 
 const documentsView = {
@@ -24,7 +24,7 @@ const documentsView = {
       this.filterState.search = '';
     }
 
-    const docs = window.db.getDocuments(this.filterState);
+    const docs = this.getFilteredDocuments();
     const docTypes = window.db.data.document_types || [];
     const allDocsData = (window.db && window.db.data && window.db.data.documents) ? window.db.data.documents : [];
     const academicYearsList = (window.db && window.db.data && window.db.data.academic_years) ? window.db.data.academic_years : [];
@@ -37,7 +37,6 @@ const documentsView = {
     const canCreate = window.authSystem.hasPermission('create_documents');
     const canEdit = window.authSystem.hasPermission('edit_documents');
     const canDelete = window.authSystem.hasPermission('delete_documents');
-    const canManageTypes = window.authSystem.hasPermission('manage_settings');
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -46,24 +45,16 @@ const documentsView = {
             <i class="fa-solid fa-file-invoice text-primary"></i> ทะเบียนเอกสาร ปพ.
           </h2>
           <p style="font-size: 0.88rem; color: var(--text-muted);">
-            ทะเบียนจัดเก็บเอกสาร ปพ.1 ถึง ปพ.9 เอกสารดิจิทัล และตำแหน่งสถานที่จัดเก็บ
+            บริหารจัดการทะเบียนจัดเก็บเอกสาร ปพ.1 ถึง ปพ.9 และเชื่อมโยงตำแหน่งจัดเก็บ
           </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button id="add-ocr-scan-btn" class="btn btn-warning btn-sm" style="font-weight: 600;">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> ⚡ สแกนอ่านไฟล์ ปพ.
-          </button>
-          ${canManageTypes ? `
-            <button id="manage-doc-types-btn" class="btn btn-secondary btn-sm">
-              <i class="fa-solid fa-sliders text-warning"></i> จัดการประเภทเอกสาร
-            </button>
-          ` : ''}
           <button id="export-docs-excel-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-file-excel text-success"></i> ส่งออก Excel
           </button>
           ${canCreate ? `
             <button id="add-doc-btn" class="btn btn-primary btn-sm">
-              <i class="fa-solid fa-plus"></i> เพิ่มทะเบียนเอกสาร
+              <i class="fa-solid fa-plus"></i> เพิ่มทะเบียนเอกสารใหม่
             </button>
           ` : ''}
         </div>
@@ -97,7 +88,6 @@ const documentsView = {
               <option value="stored" ${this.filterState.status === 'stored' ? 'selected' : ''}>จัดเก็บแล้ว</option>
               <option value="pending" ${this.filterState.status === 'pending' ? 'selected' : ''}>รอตรวจสอบ</option>
               <option value="missing" ${this.filterState.status === 'missing' ? 'selected' : ''}>ไม่พบเอกสาร</option>
-              <option value="borrowed" ${this.filterState.status === 'borrowed' ? 'selected' : ''}>มีคำขอสำเนา</option>
             </select>
           </div>
         </div>
@@ -159,6 +149,32 @@ const documentsView = {
     `;
   },
 
+  getFilteredDocuments() {
+    let docs = window.db.getDocuments();
+    if (this.filterState.search) {
+      const q = String(this.filterState.search).toLowerCase().trim();
+      docs = docs.filter(d =>
+        d && (
+          String(d.doc_code || '').toLowerCase().includes(q) ||
+          String(d.student_id || '').toLowerCase().includes(q) ||
+          String(d.student_name || '').toLowerCase().includes(q) ||
+          String(d.doc_number || '').toLowerCase().includes(q) ||
+          String(d.location_code || '').toLowerCase().includes(q)
+        )
+      );
+    }
+    if (this.filterState.doc_type_code) {
+      docs = docs.filter(d => d.doc_type_code === this.filterState.doc_type_code);
+    }
+    if (this.filterState.academic_year) {
+      docs = docs.filter(d => String(d.academic_year) === String(this.filterState.academic_year));
+    }
+    if (this.filterState.status) {
+      docs = docs.filter(d => d.status === this.filterState.status);
+    }
+    return docs;
+  },
+
   initEvents() {
     const searchInput = document.getElementById('doc-search-input');
     const filterType = document.getElementById('doc-filter-type');
@@ -166,10 +182,10 @@ const documentsView = {
     const filterStatus = document.getElementById('doc-filter-status');
 
     const updateFilters = () => {
-      this.filterState.search = searchInput.value;
-      this.filterState.doc_type_code = filterType.value;
-      this.filterState.academic_year = filterYear.value;
-      this.filterState.status = filterStatus.value;
+      this.filterState.search = searchInput ? searchInput.value : '';
+      this.filterState.doc_type_code = filterType ? filterType.value : '';
+      this.filterState.academic_year = filterYear ? filterYear.value : '';
+      this.filterState.status = filterStatus ? filterStatus.value : '';
       this.refreshTable();
     };
 
@@ -181,16 +197,10 @@ const documentsView = {
     const addBtn = document.getElementById('add-doc-btn');
     if (addBtn) addBtn.onclick = () => this.openAddDocModal();
 
-    const ocrScanBtn = document.getElementById('add-ocr-scan-btn');
-    if (ocrScanBtn) ocrScanBtn.onclick = () => this.openAddDocModal();
-
-    const manageTypesBtn = document.getElementById('manage-doc-types-btn');
-    if (manageTypesBtn) manageTypesBtn.onclick = () => this.openManageDocTypesModal();
-
     const exportBtn = document.getElementById('export-docs-excel-btn');
     if (exportBtn) {
       exportBtn.onclick = () => {
-        const docs = window.db.getDocuments(this.filterState);
+        const docs = this.getFilteredDocuments();
         const exportData = docs.map(d => ({
           'รหัสเอกสาร': d.doc_code,
           'รหัสนักเรียน': d.student_id,
@@ -198,38 +208,49 @@ const documentsView = {
           'ประเภท': d.doc_type_code,
           'ปีการศึกษา': d.academic_year,
           'เล่มที่': d.book_number,
-          'เลขที่': d.doc_number,
-          'สถานะ': d.status,
+          'เลขที่เอกสาร': d.doc_number,
+          'สถานะ': d.status === 'stored' ? 'จัดเก็บแล้ว' : d.status === 'pending' ? 'รอตรวจสอบ' : 'ไม่พบเอกสาร',
           'Location Code': d.location_code
         }));
-        window.utils.exportToExcel('ทะเบียนเอกสาร_ปพ', 'Documents', exportData);
+        window.utils.exportToExcel('Document_Registry', 'Documents', exportData);
       };
     }
 
     document.querySelectorAll('.edit-doc-btn').forEach(btn => {
-      btn.onclick = () => {
-        const id = btn.getAttribute('data-id');
-        const doc = (window.db.data.documents || []).find(d => d.id == id);
-        if (doc) this.openAddDocModal(doc);
+      btn.onclick = (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const docToEdit = (window.db.data.documents || []).find(d => d.id == id);
+        if (docToEdit) this.openAddDocModal(docToEdit);
       };
     });
 
     document.querySelectorAll('.delete-doc-btn').forEach(btn => {
-      btn.onclick = () => {
-        const id = btn.getAttribute('data-id');
-        const code = btn.getAttribute('data-code');
+      btn.onclick = (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const docCode = e.currentTarget.getAttribute('data-code');
+        const docObj = (window.db.data.documents || []).find(d => d.id == id || d.doc_code === docCode);
+
         window.utils.confirmDialog(
-          'ยืนยันการลบเอกสาร',
-          `คุณต้องการลบเอกสารรหัส <b>${code}</b> ใช่หรือไม่?`,
+          'ยืนยันการลบรายการเอกสาร',
+          `คุณต้องการลบรายการเอกสาร <b>${docCode || (docObj ? docObj.doc_number : '')}</b> ออกจากระบบใช่หรือไม่?`,
           async () => {
-            window.db.deleteDocument(code, id);
-            window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
+            if (!window.db.data.deleted_keys) window.db.data.deleted_keys = {};
+            if (!window.db.data.deleted_keys.documents) window.db.data.deleted_keys.documents = [];
+            const keyToDelete = docCode || (docObj ? docObj.doc_code : '');
+            if (keyToDelete && !window.db.data.deleted_keys.documents.includes(keyToDelete)) {
+              window.db.data.deleted_keys.documents.push(keyToDelete);
+            }
+
+            window.db.data.documents = (window.db.data.documents || []).filter(d => d.id != id && d.doc_code !== docCode);
+            window.db.addAuditLog('เอกสาร ปพ.', 'ลบเอกสาร', `ลบเอกสาร ${docCode}`);
+            window.db.saveLocal();
+
+            window.utils.showToast('กำลังลบข้อมูลออกจาก Google Sheets...', 'info');
             try {
-              await window.db.syncToGoogleSheets();
-              window.utils.showToast('ลบเอกสารและซิงก์ Google Sheets เรียบร้อยแล้ว', 'success');
+              await window.db.syncToGoogleSheets(null, 'delete');
+              window.utils.showToast('ลบรายการเอกสารสำเร็จ!', 'success');
             } catch (err) {
-              console.warn('Sync on delete:', err);
-              window.utils.showToast('ลบข้อมูลในเครื่องเรียบร้อยแล้ว', 'warning');
+              window.utils.showToast(`บันทึกในเครื่องแล้ว (พบปัญหาซิงก์ Cloud: ${err.message})`, 'warning');
             }
             this.refreshTable();
           }
@@ -239,16 +260,6 @@ const documentsView = {
   },
 
   refreshTable() {
-    if (window.location.hash.includes('#student-detail')) {
-      const main = document.getElementById('main-content');
-      if (main && window.studentDetailView) {
-        const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
-        main.innerHTML = window.studentDetailView.render({ id: params.get('id') });
-        window.studentDetailView.initEvents();
-      }
-      return;
-    }
-
     const searchEl = document.getElementById('doc-search-input');
     const cursorPos = searchEl ? searchEl.selectionStart : null;
     const isFocused = searchEl && document.activeElement === searchEl;
@@ -262,101 +273,44 @@ const documentsView = {
         const newSearchEl = document.getElementById('doc-search-input');
         if (newSearchEl) {
           newSearchEl.focus();
-          if (cursorPos !== null) {
-            newSearchEl.setSelectionRange(cursorPos, cursorPos);
-          }
+          if (cursorPos !== null) newSearchEl.setSelectionRange(cursorPos, cursorPos);
         }
       }
     }
   },
 
   openAddDocModal(docToEdit = null) {
-    const isEdit = !!(docToEdit && docToEdit.id);
-    const students = window.db.data.students || [];
+    const isEdit = !!docToEdit;
     const docTypes = window.db.data.document_types || [];
     const locations = window.db.data.storage_locations || [];
-    const books = window.db.data.books || [];
 
-    const stdIdVal = docToEdit ? docToEdit.student_id : '';
-    const stdNameVal = docToEdit ? docToEdit.student_name : '';
-    const gradYearVal = docToEdit ? docToEdit.academic_year : '';
-    const setNoVal = docToEdit ? (docToEdit.book_number || '') : '';
-    const docNumVal = docToEdit ? docToEdit.doc_number : '';
-    const docTypeVal = isEdit ? docToEdit.doc_type_code : (docTypes[0] ? docTypes[0].code : 'ปพ.1');
-    const locVal = isEdit ? docToEdit.location_code : (locations[0] ? locations[0].code : '');
-    const statusVal = isEdit ? docToEdit.status : 'stored';
-    const driveUrlValInit = docToEdit ? (docToEdit.file_url || '') : '';
+    const docTypeVal = docToEdit ? docToEdit.doc_type_code : (docTypes[0] ? docTypes[0].code : 'ปพ.1');
+    const gradYearVal = docToEdit ? docToEdit.academic_year : '2569';
+    const setNoVal = docToEdit ? docToEdit.book_number : '01';
+    const docNumVal = docToEdit ? docToEdit.doc_number : '001';
+    const locVal = docToEdit ? docToEdit.location_code : (locations[0] ? locations[0].code : '');
+    const statusVal = docToEdit ? docToEdit.status : 'stored';
+    const studentIdVal = docToEdit ? docToEdit.student_id : '';
+    const studentNameVal = docToEdit ? docToEdit.student_name : '';
 
     const bodyHtml = `
-      <form id="add-doc-form">
-        <!-- AI OCR Smart Scan & File Reader Header Card -->
-        <div style="background: linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%); color: white; padding: 1rem 1.25rem; border-radius: var(--radius-md); margin-bottom: 1.25rem;">
-          <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem; color: #ffffff;">
-            <i class="fa-solid fa-wand-magic-sparkles text-warning"></i> อัปโหลดไฟล์เอกสาร ปพ. (ระบบอ่านไฟล์สแกนอัตโนมัติ ด้วย AI OCR)
-          </h4>
-          <p style="font-size: 0.8rem; color: #e0f2fe; margin-bottom: 0.75rem;">
-            เลือกไฟล์สแกน (PDF, JPG, PNG) หรือถ่ายภาพจากกล้อง เพื่อให้ระบบดึงข้อมูล 1. ปีที่สำเร็จการศึกษา 2. ชุดที่ และ 3. เลขที่ ลงในแบบฟอร์มโดยอัตโนมัติ
-          </p>
-
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-            <button type="button" id="scan-mode-upload-btn" class="btn btn-warning btn-sm" style="font-weight: 600;">
-              <i class="fa-solid fa-folder-open"></i> เลือกไฟล์สแกน (PDF / JPG / PNG)
-            </button>
-            <button type="button" id="scan-mode-drive-btn" class="btn btn-info btn-sm">
-              <i class="fa-brands fa-google-drive"></i> วางลิงก์จาก Google Drive
-            </button>
-            <button type="button" id="scan-mode-camera-btn" class="btn btn-light btn-sm">
-              <i class="fa-solid fa-camera"></i> ถ่ายสแกนด้วยกล้อง
-            </button>
-            <button type="button" id="scan-mode-device-btn" class="btn btn-light btn-sm">
-              <i class="fa-solid fa-print"></i> ดึงจากเครื่องสแกนเนอร์
-            </button>
-          </div>
-
-          <input type="file" id="modal-doc-file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
-
-          <div id="drive-link-input-box" style="display: none; background: rgba(255,255,255,0.15); padding: 0.75rem 0.85rem; border-radius: 6px; margin-top: 0.5rem;">
-            <label style="font-size: 0.8rem; color: #ffffff; display: block; margin-bottom: 0.35rem; font-weight: 500;">
-              <i class="fa-brands fa-google-drive text-warning"></i> วาง URL/ลิงก์ไฟล์หรือรูปภาพจาก Google Drive:
-            </label>
-            <div style="display: flex; gap: 0.5rem;">
-              <input type="url" id="modal-doc-drive-url" class="form-control" placeholder="https://drive.google.com/file/d/.../view หรือ https://drive.google.com/open?id=..." style="background: white; color: #0f172a; font-size: 0.85rem;">
-              <button type="button" id="apply-drive-url-btn" class="btn btn-warning btn-sm" style="white-space: nowrap; font-weight: 600;">
-                <i class="fa-solid fa-check"></i> ใช้งานลิงก์นี้
-              </button>
-            </div>
-          </div>
-
-          <div id="ocr-status-progress" style="display: none; background: rgba(255,255,255,0.15); padding: 0.6rem 0.85rem; border-radius: 6px; font-size: 0.8rem; margin-top: 0.5rem; align-items: center; gap: 0.5rem;">
-            <i class="fa-solid fa-spinner fa-spin text-warning"></i>
-            <span id="ocr-status-text">กำลังสแกนและอ่านข้อมูลจากไฟล์เอกสาร ปพ.ด้วย AI OCR...</span>
-          </div>
-        </div>
-
-        <!-- Document Form Grid (Year, Set, Doc Number) -->
-        <div class="card" style="padding: 1rem; border: 1px solid var(--primary-200); background: #f8fafc; margin-bottom: 1rem;">
-          <h5 style="font-size: 0.9rem; font-weight: 700; color: var(--primary-900); margin-bottom: 0.85rem; display: flex; align-items: center; justify-content: space-between;">
-            <span><i class="fa-solid fa-clipboard-check text-primary"></i> ข้อมูลบันทึกรายการหลัก (ปีการศึกษา / เล่มชุดที่ / เลขที่)</span>
-            <span id="ocr-result-badge" class="badge badge-success" style="display: none;"><i class="fa-solid fa-circle-check"></i> ดึงข้อมูลอัตโนมัติสำเร็จ</span>
+      <form id="doc-modal-form">
+        <div class="card" style="padding: 1rem; background: var(--bg-app); border: 1px solid var(--border-color); margin-bottom: 1rem;">
+          <h5 style="font-size: 0.9rem; font-weight: 700; color: var(--primary-900); margin-bottom: 0.75rem;">
+            <i class="fa-solid fa-user-graduate text-primary"></i> ข้อมูลนักเรียนผู้ครอบครองเอกสาร
           </h5>
-
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label required">1. ปีที่สำเร็จการศึกษา</label>
-              <input type="text" id="modal-doc-grad-year" class="form-control" placeholder="ปีการศึกษา (พ.ศ.)" value="${gradYearVal}" required>
+              <label class="form-label">รหัสนักเรียน (ถ้ามี)</label>
+              <input type="text" id="modal-doc-student-id" class="form-control" placeholder="เช่น 65001" value="${studentIdVal}">
             </div>
             <div class="form-group">
-              <label class="form-label required">2. ชุดที่ (เล่มชุดที่)</label>
-              <input type="text" id="modal-doc-set-no" class="form-control" placeholder="ชุดที่" value="${setNoVal}" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label required">3. เลขที่</label>
-              <input type="text" id="modal-doc-number" class="form-control" placeholder="เลขที่" value="${docNumVal}" required>
+              <label class="form-label">ชื่อ-นามสกุล นักเรียน</label>
+              <input type="text" id="modal-doc-student-name" class="form-control" placeholder="เช่น นายสมชาย ใจดี" value="${studentNameVal}">
             </div>
           </div>
         </div>
 
-        <!-- Additional Registry Storage Info -->
         <div class="form-row">
           <div class="form-group">
             <label class="form-label required">ประเภทเอกสาร ปพ.</label>
@@ -365,7 +319,25 @@ const documentsView = {
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label required">ตำแหน่งสถานที่จัดเก็บ (Location)</label>
+            <label class="form-label required">ปีการศึกษา (พ.ศ.)</label>
+            <input type="text" id="modal-doc-grad-year" class="form-control" placeholder="เช่น 2569" value="${gradYearVal}" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label required">เล่มชุดที่ (Book No.)</label>
+            <input type="text" id="modal-doc-set-no" class="form-control" placeholder="เช่น 01" value="${setNoVal}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">เลขที่เอกสาร (Doc No.)</label>
+            <input type="text" id="modal-doc-number" class="form-control" placeholder="เช่น 001" value="${docNumVal}" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label required">ตำแหน่งสถานที่จัดเก็บ (Location Code)</label>
             <select id="modal-doc-location" class="form-control" required>
               ${locations.map(l => `<option value="${l.code}" ${l.code === locVal ? 'selected' : ''}>${l.code} - ${l.building} (${l.cabinet}/${l.shelf})</option>`).join('')}
             </select>
@@ -379,391 +351,88 @@ const documentsView = {
             </select>
           </div>
         </div>
-
-        <div id="file-scan-preview-box" style="display: none; background: white; padding: 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); align-items: center; justify-content: space-between; margin-top: 0.5rem;">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <i class="fa-solid fa-file-pdf text-danger" style="font-size: 2rem;" id="preview-file-icon"></i>
-            <div>
-              <strong id="preview-file-name" style="font-size: 0.9rem; color: var(--primary-900);">doc.pdf</strong>
-              <div style="font-size: 0.75rem; color: var(--text-muted);" id="preview-file-size">1.2 MB | อ่านข้อมูลสำเร็จ</div>
-            </div>
-          </div>
-          <span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> พร้อมบันทึก</span>
-        </div>
       </form>
     `;
 
     window.utils.openModal(
-      isEdit ? `<i class="fa-solid fa-pen-to-square text-primary"></i> แก้ไขข้อมูลเอกสาร ปพ.` : `<i class="fa-solid fa-file-circle-plus text-primary"></i> ระบบจัดเก็บข้อมูลเอกสารและไฟล์สแกนใบ ปพ.`,
+      isEdit ? `<i class="fa-solid fa-pen-to-square text-primary"></i> แก้ไขข้อมูลเอกสาร ปพ.` : `<i class="fa-solid fa-plus text-primary"></i> เพิ่มทะเบียนเอกสาร ปพ. ใหม่`,
       bodyHtml,
       [
         { text: 'ยกเลิก', class: 'btn btn-secondary' },
         {
-          text: isEdit ? '<i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข' : '<i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลและไฟล์สแกน',
+          text: isEdit ? '<i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข' : '<i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูล',
           class: 'btn btn-primary',
+          id: 'save-doc-submit-btn',
           onClick: async () => {
-            const stdIdEl = document.getElementById('modal-doc-student-id');
-            const stdNameEl = document.getElementById('modal-doc-student-name');
-            const studentId = stdIdEl ? stdIdEl.value.trim() : '';
-            const studentName = stdNameEl ? stdNameEl.value.trim() : '';
+            const saveBtn = document.getElementById('save-doc-submit-btn');
+            const studentId = document.getElementById('modal-doc-student-id').value.trim();
+            const studentName = document.getElementById('modal-doc-student-name').value.trim();
             const gradYear = document.getElementById('modal-doc-grad-year').value.trim();
             const setNo = document.getElementById('modal-doc-set-no').value.trim();
             const docNum = document.getElementById('modal-doc-number').value.trim();
             const docTypeCode = document.getElementById('modal-doc-type').value;
             const locationCode = document.getElementById('modal-doc-location').value;
             const status = document.getElementById('modal-doc-status').value;
-            const fileInput = document.getElementById('modal-doc-file');
 
             if (!gradYear || !setNo || !docNum) {
-              window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ปีการศึกษา, ชุดที่, เลขที่)', 'danger');
+              window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ปีการศึกษา, เล่มชุดที่, เลขที่)', 'danger');
               return false;
             }
 
-            const driveUrlInput = document.getElementById('modal-doc-drive-url');
-            const driveUrlVal = driveUrlInput ? driveUrlInput.value.trim() : driveUrlValInit;
+            if (saveBtn) {
+              saveBtn.disabled = true;
+              saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
+            }
 
-            let fileName = isEdit ? docToEdit.file_name : `ปพ_${gradYear}_${setNo}_${docNum}.pdf`;
-            let fileUrl = isEdit ? (docToEdit.file_url || 'assets/sample_porpor.pdf') : 'assets/sample_porpor.pdf';
+            const docCode = `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`;
 
-            if (driveUrlVal) {
-              fileUrl = driveUrlVal;
-              const driveId = window.utils.getDriveFileId(driveUrlVal);
-              fileName = `GoogleDrive_${gradYear}_${driveId ? driveId.slice(0, 6) : docNum}.pdf`;
-            } else if (fileInput && fileInput.files && fileInput.files[0]) {
-              const fileObj = fileInput.files[0];
-              fileName = fileObj.name;
-              window.utils.showToast('กำลังอัปโหลดไฟล์สแกนลง Google Drive...', 'info');
-              const bookCode = `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`;
-              const driveUrl = await window.db.uploadScanFileToDrive(fileObj, fileName, bookCode);
-              if (driveUrl) {
-                fileUrl = driveUrl;
-                window.utils.showToast('อัปโหลดไฟล์ลง Google Drive และแปลงลิงก์สำเร็จ!', 'success');
+            try {
+              if (isEdit) {
+                docToEdit.student_id = studentId;
+                docToEdit.student_name = studentName;
+                docToEdit.academic_year = gradYear;
+                docToEdit.book_number = setNo;
+                docToEdit.doc_number = docNum;
+                docToEdit.doc_type_code = docTypeCode;
+                docToEdit.location_code = locationCode;
+                docToEdit.status = status;
+                docToEdit.updated_at = new Date().toISOString();
+                window.db.addAuditLog('เอกสาร ปพ.', 'แก้ไขเอกสาร', `แก้ไขเอกสาร ${docCode}`);
               } else {
-                fileUrl = URL.createObjectURL(fileObj);
-              }
-            }
-
-            if (isEdit) {
-              docToEdit.student_id = studentId;
-              docToEdit.student_name = studentName;
-              docToEdit.academic_year = gradYear;
-              docToEdit.book_number = setNo;
-              docToEdit.doc_number = docNum;
-              docToEdit.doc_type_code = docTypeCode;
-              docToEdit.location_code = locationCode;
-              docToEdit.status = status;
-              docToEdit.file_name = fileName;
-              docToEdit.file_url = fileUrl;
-
-              // 2-Way Sync: Update matching student record if present
-              if (studentId) {
-                const stdIdx = window.db.data.students.findIndex(s => s.student_id === studentId);
-                if (stdIdx !== -1) {
-                  window.db.data.students[stdIdx].file_url = fileUrl;
-                  window.db.data.students[stdIdx].doc_number = docNum;
-                  window.db.data.students[stdIdx].set_number = setNo;
-                }
+                const newDoc = {
+                  id: (window.db.data.documents || []).length + 1,
+                  doc_code: docCode,
+                  student_id: studentId,
+                  student_name: studentName,
+                  doc_type_code: docTypeCode,
+                  academic_year: gradYear,
+                  book_number: setNo,
+                  doc_number: docNum,
+                  status: status,
+                  location_code: locationCode,
+                  updated_at: new Date().toISOString()
+                };
+                if (!window.db.data.documents) window.db.data.documents = [];
+                window.db.data.documents.unshift(newDoc);
+                window.db.addAuditLog('เอกสาร ปพ.', 'เพิ่มเอกสาร', `เพิ่มเอกสารใหม่ ${docCode}`);
               }
 
-              window.db.addAuditLog('ทะเบียนเอกสาร', 'แก้ไขเอกสาร', `แก้ไขข้อมูลเอกสาร ปพ. เล่ม ${setNo} เลขที่ ${docNum}`);
-              window.db.save();
-              window.utils.showToast(`แก้ไขข้อมูลเอกสารเรียบร้อยแล้ว`, 'success');
+              window.db.saveLocal();
+              window.utils.showToast('กำลังส่งข้อมูลลง Google Sheets...', 'info');
+              await window.db.syncToGoogleSheets(null, isEdit ? 'update' : 'create');
+              window.utils.showToast('บันทึกข้อมูลเอกสาร ปพ. สำเร็จ!', 'success');
+              window.utils.closeModal();
               this.refreshTable();
-              return;
-            }
-
-            const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
-            const setNumInt = parseInt(String(setNo).replace(/\D/g, ''), 10);
-            const gradYearStr = String(gradYear).trim();
-
-            let matchedBook = (window.db.data.books || []).find(b => {
-              const bSetInt = parseInt(String(b.book_number || '').replace(/\D/g, ''), 10);
-              const bYearStr = String(b.academic_year || '').trim();
-              return !isNaN(setNumInt) && !isNaN(bSetInt) && bSetInt === setNumInt && bYearStr === gradYearStr;
-            });
-            let finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${docTypeCode.replace(/[\.\_\-\s]/g, '')}-${gradYear}-${setNo}`;
-
-            if (!window.db.data.books) window.db.data.books = [];
-            let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode || norm(b.book_code) === norm(finalBookCode));
-            if (!targetBookObj) {
-              targetBookObj = {
-                id: window.db.data.books.length + 1,
-                book_code: finalBookCode,
-                doc_type_code: docTypeCode,
-                academic_year: gradYear,
-                book_number: setNo,
-                start_no: '001',
-                end_no: '050',
-                item_count: 0,
-                location_code: locationCode || 'LOC-A01-01-01'
-              };
-              window.db.data.books.unshift(targetBookObj);
-            } else {
-              finalBookCode = targetBookObj.book_code;
-            }
-
-            const docCode = `DOC-${docTypeCode.replace(/[\.\_\-\s]/g, '').toUpperCase()}-${studentId || docNum}`;
-            const newDoc = {
-              id: window.db.data.documents.length + 1,
-              doc_code: docCode,
-              student_id: studentId,
-              student_name: studentName,
-              doc_type_code: docTypeCode,
-              academic_year: gradYear,
-              doc_number: docNum,
-              book_code: finalBookCode,
-              book_number: setNo,
-              page_number: docNum,
-              date_created: new Date().toISOString().slice(0, 10),
-              status: status,
-              location_code: locationCode,
-              file_name: fileName,
-              file_url: fileUrl,
-              file_size: driveUrlVal ? 'Google Drive' : '1.5 MB',
-              updated_at: new Date().toISOString()
-            };
-
-            // 2-Way Sync: Update matching student record if present
-            if (studentId) {
-              const stdIdx = window.db.data.students.findIndex(s => s.student_id === studentId);
-              if (stdIdx !== -1) {
-                window.db.data.students[stdIdx].file_url = fileUrl;
-                window.db.data.students[stdIdx].doc_number = docNum;
-                window.db.data.students[stdIdx].set_number = setNo;
-                window.db.data.students[stdIdx].book_code = finalBookCode;
+            } catch (err) {
+              window.utils.showToast(`บันทึกในเครื่องแล้ว (พบปัญหา Cloud: ${err.message})`, 'warning');
+              window.utils.closeModal();
+              this.refreshTable();
+            } finally {
+              if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = isEdit ? '<i class="fa-solid fa-floppy-disk"></i> บันทึกการแก้ไข' : '<i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูล';
               }
             }
-
-            window.db.data.documents.unshift(newDoc);
-
-            (window.db.data.books || []).forEach(b => {
-              b.item_count = window.db.getDocuments({ book_code: b.book_code }).length;
-            });
-
-            window.db.addAuditLog('ทะเบียนเอกสาร', 'เพิ่มเอกสารสแกน', `บันทึกข้อมูลและไฟล์สแกน ปพ. เล่ม ${setNo} เลขที่ ${docNum} ปี ${gradYear}`);
-            window.db.save();
-            window.utils.showToast(`บันทึกข้อมูลและไฟล์สแกน ปพ. เล่ม ${setNo} เลขที่ ${docNum} เรียบร้อยแล้ว`, 'success');
-            this.refreshTable();
-          }
-        }
-      ]
-    );
-
-    // Bind Multi-source file scanning & OCR Reader events
-    setTimeout(() => {
-      const fileInput = document.getElementById('modal-doc-file');
-      const uploadBtn = document.getElementById('scan-mode-upload-btn');
-      const driveBtn = document.getElementById('scan-mode-drive-btn');
-      const driveBox = document.getElementById('drive-link-input-box');
-      const driveInput = document.getElementById('modal-doc-drive-url');
-      const applyDriveBtn = document.getElementById('apply-drive-url-btn');
-
-      const cameraBtn = document.getElementById('scan-mode-camera-btn');
-      const deviceBtn = document.getElementById('scan-mode-device-btn');
-      const previewBox = document.getElementById('file-scan-preview-box');
-      const fileNameEl = document.getElementById('preview-file-name');
-      const fileSizeEl = document.getElementById('preview-file-size');
-      const fileIconEl = document.getElementById('preview-file-icon');
-
-      const ocrProgressBox = document.getElementById('ocr-status-progress');
-      const ocrStatusText = document.getElementById('ocr-status-text');
-      const ocrBadge = document.getElementById('ocr-result-badge');
-
-      const inputStdId = document.getElementById('modal-doc-student-id');
-      const inputStdName = document.getElementById('modal-doc-student-name');
-      const inputGradYear = document.getElementById('modal-doc-grad-year');
-      const inputSetNo = document.getElementById('modal-doc-set-no');
-      const inputDocNum = document.getElementById('modal-doc-number');
-
-      if (inputStdId) {
-        inputStdId.oninput = () => {
-          const id = inputStdId.value.trim();
-          if (id && window.db) {
-            const std = window.db.getStudentById(id);
-            if (std) {
-              if (inputStdName) inputStdName.value = `${std.prefix}${std.first_name} ${std.last_name}`;
-              if (inputGradYear && std.academic_year) inputGradYear.value = std.academic_year;
-            }
-          }
-        };
-      }
-
-      const processFileWithOCR = (file) => {
-        if (ocrProgressBox) ocrProgressBox.style.display = 'flex';
-        if (ocrStatusText) ocrStatusText.textContent = `กำลังสแกนและอ่านข้อมูลจากไฟล์ ${file.name || 'สแกน'} ด้วย AI OCR...`;
-
-        window.utils.scanAndExtractPorPorDocument(file, async (extracted) => {
-          if (ocrProgressBox) ocrProgressBox.style.display = 'none';
-          if (ocrBadge) {
-            ocrBadge.style.display = 'inline-flex';
-            ocrBadge.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> ดึงข้อมูลจากไฟล์สแกนสำเร็จ (${extracted.confidence}%)`;
-          }
-
-          if (inputStdId && extracted.student_id) inputStdId.value = extracted.student_id;
-          if (inputStdName && extracted.student_name) inputStdName.value = extracted.student_name;
-          if (inputGradYear && extracted.graduation_year) inputGradYear.value = extracted.graduation_year;
-          if (inputSetNo && extracted.set_number) inputSetNo.value = extracted.set_number;
-          if (inputDocNum && extracted.doc_number) inputDocNum.value = extracted.doc_number;
-
-          const ext = (extracted.file_name || '').split('.').pop().toLowerCase();
-          fileNameEl.textContent = extracted.file_name;
-          fileSizeEl.textContent = `${extracted.file_size} | อ่านข้อมูลเรียบร้อยแล้ว`;
-          fileIconEl.className = ext === 'pdf' ? 'fa-solid fa-file-pdf text-danger' : 'fa-solid fa-file-image text-primary';
-          previewBox.style.display = 'flex';
-
-          // Upload camera/scanner image to Google Drive if file is Blob/File or string
-          const docTypeSelect = document.getElementById('modal-doc-type');
-          const docTypeCode = docTypeSelect ? docTypeSelect.value : 'ปพ.1';
-          const setNo = extracted.set_number || '01';
-          const gradYear = extracted.graduation_year || '2569';
-          const bookCode = `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`;
-
-          if (file instanceof File || file instanceof Blob) {
-            window.utils.showToast('กำลังอัปโหลดไฟล์สแกนลง Google Drive...', 'info');
-            const driveUrl = await window.db.uploadScanFileToDrive(file, file.name || `Scan_${Date.now()}.png`, bookCode);
-            if (driveUrl) {
-              if (driveInput) driveInput.value = driveUrl;
-              fileSizeEl.textContent = `Google Drive Link | เชื่อมโยงพร้อมบันทึกใน Google Sheets`;
-              fileIconEl.className = 'fa-brands fa-google-drive text-success';
-              window.utils.showToast('อัปโหลดไฟล์ไป Google Drive และเตรียมบันทึกลงชีทเรียบร้อยแล้ว!', 'success');
-            }
-          }
-
-          window.utils.showToast(`อ่านข้อมูลจากไฟล์สแกนสำเร็จ: เล่ม ${extracted.set_number || '-'} เลขที่ ${extracted.doc_number || '-'}`, 'success');
-        });
-      };
-
-      if (driveBtn && driveBox) {
-        driveBtn.onclick = () => {
-          const isHidden = driveBox.style.display === 'none';
-          driveBox.style.display = isHidden ? 'block' : 'none';
-          if (isHidden && driveInput) driveInput.focus();
-        };
-      }
-
-      if (applyDriveBtn && driveInput) {
-        applyDriveBtn.onclick = () => {
-          const urlVal = driveInput.value.trim();
-          if (!urlVal) {
-            window.utils.showToast('กรุณาวาง URL หรือลิงก์จาก Google Drive', 'danger');
-            return;
-          }
-          if (!window.utils.isDriveUrl(urlVal)) {
-            window.utils.showToast('รูปแบบลิงก์ Google Drive ไม่ถูกต้อง โปรดตรวจสอบอีกครั้ง', 'warning');
-          }
-          const driveId = window.utils.getDriveFileId(urlVal);
-          fileNameEl.textContent = `Google Drive File (${driveId ? driveId.slice(0, 10) + '...' : 'Shared Link'})`;
-          fileSizeEl.textContent = `Google Drive Link | เชื่อมโยงพร้อมใช้งาน`;
-          fileIconEl.className = 'fa-brands fa-google-drive text-success';
-          previewBox.style.display = 'flex';
-          window.utils.showToast('เชื่อมโยงลิงก์ Google Drive เรียบร้อยแล้ว', 'success');
-        };
-      }
-
-      if (uploadBtn && fileInput) {
-        uploadBtn.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-          if (e.target.files.length) {
-            const f = e.target.files[0];
-            const ext = f.name.split('.').pop().toLowerCase();
-            if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
-              window.utils.showToast('รองรับเฉพาะไฟล์ PDF, JPG, JPEG, PNG เท่านั้น', 'danger');
-              return;
-            }
-            processFileWithOCR(f);
-          }
-        };
-      }
-
-      if (cameraBtn) {
-        cameraBtn.onclick = (e) => {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          window.utils.openLiveCameraModal((capturedFile) => {
-            processFileWithOCR(capturedFile);
-          });
-        };
-      }
-
-      if (deviceBtn) {
-        deviceBtn.onclick = () => {
-          window.utils.showToast('กำลังรับภาพจากเครื่องปริ้นสแกนเนอร์...', 'info');
-          setTimeout(() => {
-            const scanName = `Scan_Device_65001235_2565.pdf`;
-            window.lastCapturedScanName = scanName;
-            processFileWithOCR({ name: scanName, size: 1800000 });
-          }, 600);
-        };
-      }
-    }, 150);
-  },
-
-  openManageDocTypesModal() {
-    const docTypes = window.db.data.document_types || [];
-
-    const bodyHtml = `
-      <div>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-          ผู้ดูแลระบบสามารถ เพิ่ม แก้ไข หรือลบประเภทเอกสาร ปพ. ได้ตามความต้องการของสถานศึกษา (ไม่ Hard-code)
-        </p>
-        <div class="table-responsive" style="margin-bottom: 1rem;">
-          <table class="data-table">
-            <thead>
-              <tr><th>รหัสประเภท</th><th>ชื่อเอกสาร</th><th>คำอธิบาย</th></tr>
-            </thead>
-            <tbody>
-              ${docTypes.map(t => `
-                <tr>
-                  <td><strong>${t.code}</strong></td>
-                  <td>${t.name}</td>
-                  <td>${t.description || '-'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-
-        <h5 style="margin-bottom: 0.5rem;"><i class="fa-solid fa-plus"></i> เพิ่มประเภทเอกสารใหม่</h5>
-        <div class="form-row">
-          <input type="text" id="new-type-code" class="form-control" placeholder="เช่น ปพ.10">
-          <input type="text" id="new-type-name" class="form-control" placeholder="ชื่อเอกสาร">
-        </div>
-      </div>
-    `;
-
-    window.utils.openModal(
-      `<i class="fa-solid fa-sliders text-warning"></i> จัดการประเภทเอกสาร ปพ.`,
-      bodyHtml,
-      [
-        { text: 'ปิด', class: 'btn btn-secondary' },
-        {
-          text: 'เพิ่มประเภทเอกสาร',
-          class: 'btn btn-success',
-          closeOnClick: false,
-          onClick: () => {
-            const code = document.getElementById('new-type-code').value.trim();
-            const name = document.getElementById('new-type-name').value.trim();
-
-            if (!code || !name) {
-              window.utils.showToast('กรุณากรอกรหัสและชื่อประเภทเอกสาร', 'danger');
-              return;
-            }
-
-            window.db.data.document_types.push({
-              id: window.db.data.document_types.length + 1,
-              code: code,
-              name: name,
-              description: 'ประเภทเอกสารที่เพิ่มโดยผู้ดูแลระบบ',
-              is_system: false
-            });
-
-            window.db.addAuditLog('ตั้งค่าระบบ', 'เพิ่มประเภทเอกสาร', `เพิ่มประเภทเอกสาร ${code} (${name})`);
-            window.db.save();
-            window.utils.showToast(`เพิ่มประเภทเอกสาร ${code} เรียบร้อยแล้ว`, 'success');
-            window.utils.closeModal();
-            this.refreshTable();
           }
         }
       ]

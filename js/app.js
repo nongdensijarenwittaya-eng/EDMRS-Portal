@@ -1,36 +1,20 @@
 /* ==========================================================================
    EDMRS - Application Master Controller & Initializer (js/app.js)
-   Handles sidebar toggle, user dropdowns, global search shortcuts & clock
+   Single Initialization, UI Event Bindings & Clock
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
   const isAuthenticated = window.authSystem && window.authSystem.isAuthenticated();
-  const alreadyLoaded = sessionStorage.getItem('has_loaded_initial') === 'true' || window._initialAppLoaded;
 
-  // Show loading modal ONLY BEFORE entering dashboard on initial app load when authenticated
-  if (isAuthenticated && !alreadyLoaded) {
-    window._initialAppLoaded = true;
-    sessionStorage.setItem('has_loaded_initial', 'true');
-    autoFetchFromGoogleSheets(false);
-  } else {
-    // Silent background sync
-    autoFetchFromGoogleSheets(true);
-  }
-
-  // Check if authenticated
   if (isAuthenticated) {
     initAppShell();
+    // Perform Single Flight Initial Load from Google Sheets
+    window.db.initializeDatabase().finally(() => {
+      if (window.router) window.router.handleRoute();
+    });
+  } else {
+    if (window.router) window.router.handleRoute();
   }
-
-  // Initial Route Trigger
-  if (window.router) window.router.handleRoute();
-
-  // Auto-fetch on window focus (when returning to browser tab)
-  window.addEventListener('focus', () => {
-    if (window.db && !window.db.googleSyncDisabled) {
-      autoFetchFromGoogleSheets(true);
-    }
-  });
 });
 
 function initAppShell() {
@@ -133,25 +117,23 @@ function initAppShell() {
   if (logoutBtn) logoutBtn.onclick = () => window.authSystem.logout();
   if (dropdownLogoutBtn) dropdownLogoutBtn.onclick = () => window.authSystem.logout();
 
-
-  // Fetch All Real Data from Google Sheets
+  // Manual Refresh Data from Google Sheets
   const fetchSheetsBtn = document.getElementById('fetch-sheets-data-btn');
   if (fetchSheetsBtn) {
-    fetchSheetsBtn.onclick = () => {
-      autoFetchFromGoogleSheets(false);
-    };
-  }
-
-  // Push Data to Google Sheets
-  const pushSheetsBtn = document.getElementById('push-sheets-data-btn');
-  if (pushSheetsBtn) {
-    pushSheetsBtn.onclick = async () => {
+    fetchSheetsBtn.onclick = async () => {
       try {
-        window.utils.showToast('กำลังส่งข้อมูลทั้งหมดลง Google Sheets...', 'info');
-        await window.db.syncToGoogleSheets();
-        window.utils.showToast('บันทึกข้อมูลลง Google Sheets สำเร็จ!', 'success', 5000);
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast('กำลังดึงข้อมูลล่าสุดจาก Google Sheets...', 'info');
+        }
+        await window.db.syncFromGoogleSheets();
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast('ดึงข้อมูลจาก Google Sheets สำเร็จ!', 'success');
+        }
+        if (window.router) window.router.handleRoute();
       } catch (err) {
-        window.utils.showToast(`ไม่สามารถบันทึกลงชีทได้: ${err.message}`, 'danger', 5000);
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast(`ไม่สามารถดึงข้อมูลได้: ${err.message}`, 'danger');
+        }
       }
     };
   }
@@ -198,71 +180,3 @@ function updateLiveClock() {
     clockEl.textContent = `${thaiDate} | ${timeStr} น.`;
   }
 }
-
-function autoFetchFromGoogleSheets(silent = false) {
-  if (window.db && window.db.googleSyncDisabled) {
-    if (!silent) console.warn('[App] Auto fetch skipped: Google Sheets sync is disabled due to invalid URL or 404');
-    return;
-  }
-
-  const sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : '';
-  if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) return;
-
-  const currentStudentCount = (window.db.data.students || []).length;
-  const currentDocCount = (window.db.data.documents || []).length;
-
-  if (!silent) {
-    if (window.utils && window.utils.showLoadingModal) {
-      window.utils.showLoadingModal(
-        'กำลังเชื่อมต่อและโหลดข้อมูลสด...',
-        'ระบบกำลังดึงข้อมูลนักเรียน เอกสาร ปพ. และทะเบียนจาก<br><strong style="color: #334155;">Google Sheets</strong>'
-      );
-      if (window.utils.updateLoadingModalProgress) window.utils.updateLoadingModalProgress(40);
-    }
-  }
-
-  const fetchTask = (!silent && !window.db.DB_STATE.initialized)
-    ? window.db.initializeDatabase()
-    : window.db.syncFromGoogleSheets(sheetsUrl);
-
-  fetchTask.then(counts => {
-    if (!counts) return;
-    const hasChanged = counts.dataChanged || (counts.studentCount !== currentStudentCount || counts.docCount !== currentDocCount);
-    if (!silent) {
-      if (window.utils && window.utils.updateLoadingModalProgress) {
-        window.utils.updateLoadingModalProgress(100, 'ดึงข้อมูลสำเร็จ!', `โหลดนักเรียน ${counts.studentCount} คน, เอกสาร ${counts.docCount} ฉบับ, เล่ม ${counts.bookCount} เล่ม`);
-      }
-      setTimeout(() => {
-        if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
-      }, 500);
-    }
-    // Auto-update UI if any cell/data changed in Google Sheets or on initial fetch
-    if (hasChanged || (!silent && currentStudentCount === 0)) {
-      if (window.router && typeof window.router.handleRoute === 'function') {
-        window.router.handleRoute();
-      }
-    }
-  }).catch(err => {
-    if (!silent) {
-      console.warn('Auto fetch from Google Sheets skipped:', err.message);
-      if (window.utils && window.utils.hideLoadingModal) window.utils.hideLoadingModal();
-      if (window.utils && window.utils.showToast) {
-        window.utils.showToast(`ไม่สามารถดึงข้อมูลได้: ${err.message}`, 'danger', 5000);
-      }
-    }
-  });
-}
-window.autoFetchFromGoogleSheets = autoFetchFromGoogleSheets;
-
-// Multi-Device Realtime Auto-Sync: Keep all open devices updated
-window.addEventListener('focus', () => {
-  if (window.db && !window.db.googleSyncDisabled && typeof window.autoFetchFromGoogleSheets === 'function') {
-    window.autoFetchFromGoogleSheets(true);
-  }
-});
-
-setInterval(() => {
-  if (window.db && !window.db.googleSyncDisabled && typeof window.autoFetchFromGoogleSheets === 'function') {
-    window.autoFetchFromGoogleSheets(true);
-  }
-}, 25000);

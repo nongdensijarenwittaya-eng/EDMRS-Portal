@@ -118,7 +118,21 @@ const usersView = {
               </tr>
             </thead>
             <tbody>
-              ${window.db.data.permissions.map(p => `
+              ${((window.db && window.db.data && Array.isArray(window.db.data.permissions)) ? window.db.data.permissions : [
+                { key: 'view_students', name: 'ดูข้อมูลนักเรียน' },
+                { key: 'create_students', name: 'เพิ่มข้อมูลนักเรียน' },
+                { key: 'edit_students', name: 'แก้ไขข้อมูลนักเรียน' },
+                { key: 'delete_students', name: 'ลบข้อมูลนักเรียน' },
+                { key: 'view_documents', name: 'ดูเอกสาร ปพ.' },
+                { key: 'create_documents', name: 'เพิ่มเอกสาร ปพ.' },
+                { key: 'edit_documents', name: 'แก้ไขเอกสาร ปพ.' },
+                { key: 'delete_documents', name: 'ลบเอกสาร ปพ.' },
+                { key: 'upload_documents', name: 'อัปโหลดเอกสาร Google Drive' },
+                { key: 'download_documents', name: 'ดาวน์โหลดไฟล์เอกสาร' },
+                { key: 'manage_loans', name: 'ยืม-คืนเอกสาร' },
+                { key: 'manage_users', name: 'จัดการผู้ใช้และกำหนดสิทธิ์ (RBAC)' },
+                { key: 'manage_system', name: 'ตั้งค่าระบบ' }
+              ]).map(p => `
                 <tr>
                   <td><strong>${p.name}</strong> <small style="color: var(--text-muted);">(${p.key})</small></td>
                   <td style="text-align: center;"><i class="fa-solid fa-circle-check text-success"></i></td>

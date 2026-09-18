@@ -135,7 +135,7 @@ class AuthSystem {
 
   getRole() {
     if (!this.currentUser) return null;
-    return window.db.data.roles.find(r => r.code === this.currentUser.role_code);
+    return (window.db && window.db.data && Array.isArray(window.db.data.roles) ? window.db.data.roles : []).find(r => r.code === this.currentUser.role_code);
   }
 
   // Permission Matrix Checker

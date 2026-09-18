@@ -271,7 +271,7 @@ const locationsView = {
               window.db.save();
               window.db.syncToGoogleSheets().catch(err => console.warn('Sync locations:', err));
               window.utils.showToast('แก้ไขข้อมูลตำแหน่งจัดเก็บเรียบร้อยแล้ว', 'success');
-              window.location.reload();
+              if (window.router) window.router.handleRoute();
               return;
             }
 
@@ -296,7 +296,7 @@ const locationsView = {
             window.db.save();
             window.db.syncToGoogleSheets().catch(err => console.warn('Sync locations:', err));
             window.utils.showToast(`สร้าง Location Code: ${code} สำเร็จ`, 'success');
-            window.location.reload();
+            if (window.router) window.router.handleRoute();
           }
         }
       ]
