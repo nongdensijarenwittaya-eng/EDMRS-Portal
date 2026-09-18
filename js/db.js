@@ -83,11 +83,44 @@ class RelationalDatabase {
     if (!this.data.settings.sheets_url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(this.data.settings.sheets_url))) {
       this.data.settings.sheets_url = defaultUrl;
     }
-
+    
     this.seedRolesAndPermissions();
     if (!this.data.users || this.data.users.length === 0) this.seedUsers();
     if (!this.data.academic_years || this.data.academic_years.length === 0) this.seedAcademicYears();
     if (!this.data.document_types || this.data.document_types.length === 0) this.seedDocumentTypes();
+  }
+
+  /**
+   * Test Google Sheets Web App Connection
+   */
+  async testGoogleSheetsConnection(url) {
+    const testUrl = url || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+    if (!testUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(testUrl))) {
+      return { success: false, message: 'URL Google Apps Script Web App ไม่ถูกต้อง (ต้องเริ่มต้นด้วย https://script.google.com/macros/s/ และลงท้ายด้วย /exec)' };
+    }
+    try {
+      const separator = testUrl.includes('?') ? '&' : '?';
+      const pingUrl = `${testUrl}${separator}action=ping&t=${Date.now()}`;
+      const res = await fetch(pingUrl);
+      if (!res.ok) {
+        if (res.status === 404) {
+          return { success: false, message: 'HTTP 404: ไม่พบ Web App URL นี้ในระบบ Google Apps Script (กรุณาตรวจสอบว่ากดยืนยัน Deploy เป็น "Anyone/ทุกคน" หรือยัง)' };
+        }
+        return { success: false, message: `HTTP Error Status: ${res.status}` };
+      }
+      const json = await res.json();
+      if (json && json.status === 'success') {
+        this.googleSyncDisabled = false;
+        this.DB_STATE.syncMessage = '🟢 เชื่อมต่อแล้ว';
+        if (!this.data.settings) this.data.settings = {};
+        this.data.settings.sheets_url = testUrl;
+        this.saveLocal();
+        return { success: true, message: 'เชื่อมต่อ Google Apps Script Web App สำเร็จเรียบร้อยแล้ว!' };
+      }
+      return { success: false, message: (json && json.message) || 'ตอบกลับจาก Google Apps Script ไม่ถูกต้อง' };
+    } catch (err) {
+      return { success: false, message: `ไม่สามารถเชื่อมต่อได้: ${err.message}` };
+    }
   }
 
   /**
@@ -127,9 +160,21 @@ class RelationalDatabase {
    */
   async syncFromGoogleSheets(customUrl) {
     console.trace("[DB][GET] called");
+    if (customUrl) {
+      this.googleSyncDisabled = false;
+    }
+
     if (this.googleSyncDisabled && !customUrl) {
-      console.log('[DB][GET] Google Sheets sync is disabled due to invalid URL or 404');
-      return null;
+      // Auto-recovery: If sheets_url in settings differs from CONFIG.GOOGLE_APPS_SCRIPT_URL, try config URL
+      if (window.CONFIG && window.CONFIG.GOOGLE_APPS_SCRIPT_URL && this.data.settings && this.data.settings.sheets_url !== window.CONFIG.GOOGLE_APPS_SCRIPT_URL) {
+        console.log('[DB][GET] Auto-recovering using CONFIG.GOOGLE_APPS_SCRIPT_URL');
+        this.data.settings.sheets_url = window.CONFIG.GOOGLE_APPS_SCRIPT_URL;
+        this.saveLocal();
+        this.googleSyncDisabled = false;
+      } else {
+        console.log('[DB][GET] Google Sheets sync is disabled due to invalid URL or 404');
+        return null;
+      }
     }
 
     if (this.fetchPromise) {
@@ -138,7 +183,7 @@ class RelationalDatabase {
     }
 
     this.fetchPromise = (async () => {
-      const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+      let sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
       console.log('[DB][GET] Fetching records from:', sheetsUrl);
 
       this.DB_STATE.fetching = true;
@@ -167,9 +212,20 @@ class RelationalDatabase {
 
         if (!res.ok) {
           if (res.status === 404) {
+            // Auto fallback check: if stored URL was old and differs from CONFIG default, update it
+            if (window.CONFIG && window.CONFIG.GOOGLE_APPS_SCRIPT_URL && sheetsUrl !== window.CONFIG.GOOGLE_APPS_SCRIPT_URL) {
+              console.warn('[DB][GET] Stored URL returned 404. Falling back to default CONFIG URL...');
+              this.data.settings.sheets_url = window.CONFIG.GOOGLE_APPS_SCRIPT_URL;
+              this.saveLocal();
+              // Recursive one-time retry with new CONFIG URL
+              this.fetchPromise = null;
+              this.googleSyncDisabled = false;
+              return await this.syncFromGoogleSheets(window.CONFIG.GOOGLE_APPS_SCRIPT_URL);
+            }
+
             this.googleSyncDisabled = true;
-            this.DB_STATE.syncMessage = '🔴 เกิดข้อผิดพลาด 404: Google Apps Script Web App URL ไม่ถูกต้องหรือหมดอายุ';
-            throw new Error('Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบ Web App URL');
+            this.DB_STATE.syncMessage = '🔴 เกิดข้อผิดพลาด 404: Web App URL ไม่ถูกต้องหรือยังไม่ได้ Deploy เป็น "Anyone"';
+            throw new Error('Google Apps Script Web App ตอบกลับ HTTP 404 — กรุณาตรวจสอบว่าใน Google Apps Script ได้กด Deploy เลือก Who has access = "Anyone (ทุกคน)" เรียบร้อยแล้วหรือยัง');
           } else if (res.status === 401 || res.status === 403) {
             throw new Error('ไม่มีสิทธิ์เข้าถึง Google Sheets (Permission Denied)');
           } else if (res.status === 429) {
