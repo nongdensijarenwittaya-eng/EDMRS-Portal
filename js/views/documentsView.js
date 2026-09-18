@@ -248,10 +248,25 @@ const documentsView = {
       }
       return;
     }
+
+    const searchEl = document.getElementById('doc-search-input');
+    const cursorPos = searchEl ? searchEl.selectionStart : null;
+    const isFocused = searchEl && document.activeElement === searchEl;
+
     const main = document.getElementById('main-content');
     if (main) {
       main.innerHTML = this.render();
       this.initEvents();
+
+      if (isFocused) {
+        const newSearchEl = document.getElementById('doc-search-input');
+        if (newSearchEl) {
+          newSearchEl.focus();
+          if (cursorPos !== null) {
+            newSearchEl.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      }
     }
   },
 
@@ -457,14 +472,19 @@ const documentsView = {
               return;
             }
 
-            let matchedBook = (window.db.data.books || []).find(b =>
-              String(b.book_number || '').replace(/\D/g, '') === String(setNo).replace(/\D/g, '') &&
-              String(b.academic_year || '').trim() === String(gradYear).trim()
-            );
-            const finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${docTypeCode.replace(/[\.\s]/g, '')}-${gradYear}-${setNo}`;
+            const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
+            const setNumInt = parseInt(String(setNo).replace(/\D/g, ''), 10);
+            const gradYearStr = String(gradYear).trim();
+
+            let matchedBook = (window.db.data.books || []).find(b => {
+              const bSetInt = parseInt(String(b.book_number || '').replace(/\D/g, ''), 10);
+              const bYearStr = String(b.academic_year || '').trim();
+              return !isNaN(setNumInt) && !isNaN(bSetInt) && bSetInt === setNumInt && bYearStr === gradYearStr;
+            });
+            let finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${docTypeCode.replace(/[\.\_\-\s]/g, '')}-${gradYear}-${setNo}`;
 
             if (!window.db.data.books) window.db.data.books = [];
-            let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode);
+            let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode || norm(b.book_code) === norm(finalBookCode));
             if (!targetBookObj) {
               targetBookObj = {
                 id: window.db.data.books.length + 1,
@@ -478,9 +498,11 @@ const documentsView = {
                 location_code: locationCode || 'LOC-A01-01-01'
               };
               window.db.data.books.unshift(targetBookObj);
+            } else {
+              finalBookCode = targetBookObj.book_code;
             }
 
-            const docCode = `DOC-${docTypeCode.replace(/[\.\s]/g, '')}-${studentId || docNum}`;
+            const docCode = `DOC-${docTypeCode.replace(/[\.\_\-\s]/g, '').toUpperCase()}-${studentId || docNum}`;
             const newDoc = {
               id: window.db.data.documents.length + 1,
               doc_code: docCode,
@@ -508,10 +530,16 @@ const documentsView = {
                 window.db.data.students[stdIdx].file_url = fileUrl;
                 window.db.data.students[stdIdx].doc_number = docNum;
                 window.db.data.students[stdIdx].set_number = setNo;
+                window.db.data.students[stdIdx].book_code = finalBookCode;
               }
             }
 
             window.db.data.documents.unshift(newDoc);
+
+            (window.db.data.books || []).forEach(b => {
+              b.item_count = window.db.getDocuments({ book_code: b.book_code }).length;
+            });
+
             window.db.addAuditLog('ทะเบียนเอกสาร', 'เพิ่มเอกสารสแกน', `บันทึกข้อมูลและไฟล์สแกน ปพ. เล่ม ${setNo} เลขที่ ${docNum} ปี ${gradYear}`);
             window.db.save();
             window.utils.showToast(`บันทึกข้อมูลและไฟล์สแกน ปพ. เล่ม ${setNo} เลขที่ ${docNum} เรียบร้อยแล้ว`, 'success');

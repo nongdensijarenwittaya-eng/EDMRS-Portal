@@ -2,17 +2,8 @@
  * ==========================================================================
  * EDMRS - Google Apps Script (GAS) Connector (Code.gs)
  * ระบบเชื่อมต่อ Google Sheets & Google Drive Albums สำหรับ EDMRS
+ * (เวอร์ชันปรับปรุง: High-Performance Concurrent Merge & Non-Destructive Multi-Device Sync)
  * ==========================================================================
- * 
- * วิธีการติดตั้ง:
- * 1. เปิด Google Sheets ขึ้นมาใหม่ ตั้งชื่อว่า "EDMRS_Database_Master"
- * 2. ไปที่เมนู Extensions (ส่วนขยาย) -> Apps Script
- * 3. คัดลอกโค้ดทั้งหมดในไฟล์นี้ วางแทนที่ใน Code.gs
- * 4. เปลี่ยนค่า DRIVE_ROOT_FOLDER_ID ด้านล่างให้เป็น ID โฟลเดอร์ใน Google Drive ของท่าน
- * 5. กด Deploy (ทำให้ใช้งานได้) -> New Deployment -> Select Type: Web App
- *    - Execute as: Me (ฉัน)
- *    - Who has access: Anyone (ทุกคน)
- * 6. คัดลอก Web App URL ที่ได้ นำไปวางในหน้า "ตั้งค่าระบบ" ของ EDMRS
  */
 
 // CONFIGURATION: กำหนด ID ของโฟลเดอร์หลักใน Google Drive
@@ -27,11 +18,7 @@ function onOpen() {
     ui.createMenu("📚 EDMRS Tools")
       .addItem("⚡ สร้างแท็บและคอลัมน์ทั้งหมดอัตโนมัติ (Auto Create Columns)", "initSheetsStructure")
       .addToUi();
-  } catch (e) {
-    // Suppress if run outside Spreadsheet UI context
-  }
-  
-  // สร้างโครงสร้างแท็บและคอลัมน์อัตโนมัติทันที
+  } catch (e) {}
   initSheetsStructure();
 }
 
@@ -41,55 +28,55 @@ function onOpen() {
 function initSheetsStructure() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. Tab: Students (ข้อมูลนักเรียน - 10 คอลัมน์)
+  // 1. Tab: Students
   var studentsSheet = ss.getSheetByName("Students") || ss.insertSheet("Students");
   if (studentsSheet.getLastRow() === 0) {
-    studentsSheet.appendRow(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ"]);
-    studentsSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
+    studentsSheet.appendRow(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ", "Updated At"]);
+    studentsSheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
     studentsSheet.setFrozenRows(1);
   }
 
-  // 2. Tab: Documents (ทะเบียนเอกสาร ปพ. - 9 คอลัมน์)
+  // 2. Tab: Documents
   var docsSheet = ss.getSheetByName("Documents") || ss.insertSheet("Documents");
   if (docsSheet.getLastRow() === 0) {
-    docsSheet.appendRow(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code"]);
-    docsSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
+    docsSheet.appendRow(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "Updated At"]);
+    docsSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
     docsSheet.setFrozenRows(1);
   }
 
-  // 3. Tab: Books (ทะเบียนเล่มเอกสาร - 8 คอลัมน์)
+  // 3. Tab: Books
   var booksSheet = ss.getSheetByName("Books") || ss.insertSheet("Books");
   if (booksSheet.getLastRow() === 0) {
-    booksSheet.appendRow(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code"]);
-    booksSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
+    booksSheet.appendRow(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Updated At"]);
+    booksSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
     booksSheet.setFrozenRows(1);
   }
 
-  // 4. Tab: Loans / Doc_Requests (ประวัติคำขอสำเนาเอกสาร - 10 คอลัมน์)
+  // 4. Tab: Loans / Doc_Requests
   var loansSheet = ss.getSheetByName("Loans") || ss.insertSheet("Loans");
   if (loansSheet.getLastRow() === 0) {
-    loansSheet.appendRow(["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ"]);
-    loansSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#f59e0b").setFontColor("#ffffff");
+    loansSheet.appendRow(["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ", "Updated At"]);
+    loansSheet.getRange(1, 1, 1, 11).setFontWeight("bold").setBackground("#f59e0b").setFontColor("#ffffff");
     loansSheet.setFrozenRows(1);
   }
 
-  // 5. Tab: Storage_Locations (สถานที่จัดเก็บ - 7 คอลัมน์)
+  // 5. Tab: Storage_Locations
   var locsSheet = ss.getSheetByName("Storage_Locations") || ss.insertSheet("Storage_Locations");
   if (locsSheet.getLastRow() === 0) {
-    locsSheet.appendRow(["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย"]);
-    locsSheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#64748b").setFontColor("#ffffff");
+    locsSheet.appendRow(["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย", "Updated At"]);
+    locsSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#64748b").setFontColor("#ffffff");
     locsSheet.setFrozenRows(1);
   }
 
-  // 6. Tab: Users (บัญชีผู้ใช้งานระบบ - 8 คอลัมน์)
+  // 6. Tab: Users
   var usersSheet = ss.getSheetByName("Users") || ss.insertSheet("Users");
   if (usersSheet.getLastRow() === 0) {
-    usersSheet.appendRow(["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง", "Password Hash"]);
-    usersSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#ef4444").setFontColor("#ffffff");
+    usersSheet.appendRow(["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง", "Password Hash", "Updated At"]);
+    usersSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#ef4444").setFontColor("#ffffff");
     usersSheet.setFrozenRows(1);
   }
 
-  // 7. Tab: Settings (ตั้งค่าระบบ - 3 คอลัมน์)
+  // 7. Tab: Settings
   var settingsSheet = ss.getSheetByName("Settings") || ss.insertSheet("Settings");
   if (settingsSheet.getLastRow() === 0) {
     settingsSheet.appendRow(["Setting Key", "Value", "Description"]);
@@ -97,7 +84,7 @@ function initSheetsStructure() {
     settingsSheet.setFrozenRows(1);
   }
 
-  // 8. Tab: Deleted_Keys (ประวัติคีย์ที่ถูกลบเพื่อป้องกันข้อมูลเก่าฟื้นคืน)
+  // 8. Tab: Deleted_Keys
   var delSheet = ss.getSheetByName("Deleted_Keys") || ss.insertSheet("Deleted_Keys");
   if (delSheet.getLastRow() === 0) {
     delSheet.appendRow(["Category", "Deleted Key", "Deleted Timestamp"]);
@@ -128,7 +115,7 @@ function getStoredDeletedKeys() {
 }
 
 /**
- * บันทึกคีย์ที่ถูกลบลงชีท "Deleted_Keys" อย่างถาวร ป้องกันข้อมูลฟื้นคืน
+ * บันทึกคีย์ที่ถูกลบลงชีท "Deleted_Keys" อย่างถาวร
  */
 function recordDeletedKeys(deletedKeysObj) {
   if (!deletedKeysObj || typeof deletedKeysObj !== "object") return;
@@ -159,62 +146,6 @@ function recordDeletedKeys(deletedKeysObj) {
   }
 }
 
-/**
- * ยกเลิกรายการคีย์ที่เคยลบใน "Deleted_Keys" หากคีย์นั้นกลับมาใช้งานใหม่เป็น Active Record
- */
-function unrecordDeletedKeys(activeKeysObj) {
-  if (!activeKeysObj || typeof activeKeysObj !== "object") return;
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Deleted_Keys");
-  if (!sheet || sheet.getLastRow() <= 1) return;
-
-  var activeMap = {};
-  Object.keys(activeKeysObj).forEach(function(cat) {
-    var catLower = String(cat).toLowerCase();
-    var list = activeKeysObj[cat];
-    if (Array.isArray(list)) {
-      list.forEach(function(item) {
-        var key = "";
-        if (typeof item === "string" || typeof item === "number") {
-          key = String(item).trim().toLowerCase();
-        } else if (item && typeof item === "object") {
-          key = String(item.student_id || item.doc_code || item.book_code || item.loan_code || item.code || item.username || item.id || "").trim().toLowerCase();
-        }
-        if (key) {
-          if (!activeMap[catLower]) activeMap[catLower] = {};
-          activeMap[catLower][key] = true;
-        }
-      });
-    }
-  });
-
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
-  var filteredRows = [];
-
-  values.forEach(function(row) {
-    var cat = String(row[0] || "").trim().toLowerCase();
-    var key = String(row[1] || "").trim().toLowerCase();
-    if (cat && key && activeMap[cat] && activeMap[cat][key]) {
-      // Remove from Deleted_Keys sheet because it's active
-    } else if (cat && key) {
-      filteredRows.push(row);
-    }
-  });
-
-  sheet.clearContents();
-  sheet.getRange(1, 1, 1, 3).setValues([["Category", "Deleted Key", "Deleted Timestamp"]]);
-  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#475569").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
-
-  if (filteredRows.length > 0) {
-    sheet.getRange(2, 1, filteredRows.length, 3).setValues(filteredRows);
-  }
-}
-
-/**
- * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
- */
 /**
  * HTTP GET Request Handler - สำหรับดึงข้อมูลจาก Google Sheets
  */
@@ -260,15 +191,14 @@ function doGet(e) {
 }
 
 /**
- * HTTP POST Request Handler - สำหรับบันทึก/ซิงก์ข้อมูล
- * พร้อมระบบ Script Lock ป้องกันการเขียนทับข้อมูลเมื่อใช้งานหลายเครื่องพร้อมกัน
+ * HTTP POST Request Handler - สำหรับบันทึก/ซิงก์ข้อมูลด้วยระบบ Non-Destructive High-Speed Sync
  */
 function doPost(e) {
   var lock = LockService.getScriptLock();
   var hasLock = false;
 
   try {
-    hasLock = lock.tryLock(10000);
+    hasLock = lock.tryLock(8000);
     if (!hasLock) {
       return ContentService.createTextOutput(JSON.stringify({
         status: "error",
@@ -277,7 +207,6 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (lockErr) {
-    console.warn("Write lock acquire warning:", lockErr);
     return ContentService.createTextOutput(JSON.stringify({
       status: "error",
       code: "LOCK_TIMEOUT",
@@ -294,7 +223,6 @@ function doPost(e) {
     }
     var action = contents.action || "sync_database";
 
-    // Deduplicate repeated requests via Request ID
     if (contents.requestId) {
       try {
         var cache = CacheService.getScriptCache();
@@ -316,19 +244,8 @@ function doPost(e) {
     }
 
     if (action === "sync_database") {
-      initSheetsStructure();
-
       var deletedKeys = contents.deleted_keys || {};
       recordDeletedKeys(deletedKeys);
-
-      unrecordDeletedKeys({
-        users: contents.users || [],
-        students: contents.students || [],
-        documents: contents.documents || [],
-        books: contents.books || [],
-        loans: contents.loans || [],
-        storage_locations: contents.storage_locations || []
-      });
 
       syncUsersSheet(contents.users || [], deletedKeys.users || []);
       syncStudentsSheet(contents.students || [], deletedKeys.students || []);
@@ -357,14 +274,6 @@ function doPost(e) {
 
       return ContentService.createTextOutput(successOutputStr).setMimeType(ContentService.MimeType.JSON);
     }
-    
-    if (action === "upload_file_to_album") {
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "disabled",
-        file_url: "",
-        message: "การเก็บไฟล์และเอกสารรูปภาพบน Google Drive ถูกปิดใช้งานแล้ว"
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
 
     return ContentService.createTextOutput(JSON.stringify({ status: "error", code: "UNKNOWN_ACTION", message: "Unknown action" })).setMimeType(ContentService.MimeType.JSON);
 
@@ -382,58 +291,7 @@ function doPost(e) {
 }
 
 /**
- * ฟังก์ชันสร้าง/ค้นหา โฟลเดอร์อัลบั้มประจำเล่มเอกสารใน Google Drive
- */
-function getOrCreateBookAlbumFolder(bookCode) {
-  var rootFolder;
-  try {
-    rootFolder = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID);
-  } catch (err) {
-    rootFolder = DriveApp.getRootFolder();
-  }
-
-  var vaultFolders = rootFolder.getFoldersByName("EDMRS_Drive_Vault");
-  var vaultFolder = vaultFolders.hasNext() ? vaultFolders.next() : rootFolder.createFolder("EDMRS_Drive_Vault");
-  try {
-    vaultFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (e) {}
-
-  var cleanFolderTitle = String(bookCode || "UNASSIGNED").trim();
-  if (!cleanFolderTitle || cleanFolderTitle === "undefined" || cleanFolderTitle === "null") {
-    cleanFolderTitle = "UNASSIGNED";
-  }
-
-  var albumFolders = vaultFolder.getFoldersByName(cleanFolderTitle);
-  var targetFolder = albumFolders.hasNext() ? albumFolders.next() : vaultFolder.createFolder(cleanFolderTitle);
-  try {
-    targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (e) {}
-
-  return targetFolder;
-}
-
-/**
- * ฟังก์ชันบันทึกไฟล์สแกนดิจิทัลลงในอัลบั้ม Google Drive ประจำเล่ม
- */
-function saveFileToDriveAlbum(bookCode, fileName, base64Data, fileType) {
-  var albumFolder = getOrCreateBookAlbumFolder(bookCode);
-  
-  if (!base64Data) {
-    var sampleBlob = Utilities.newBlob("EDMRS Digital PorPor Scan Document: " + fileName, fileType, fileName);
-    var file = albumFolder.createFile(sampleBlob);
-    return file.getUrl();
-  }
-  
-  var decodedData = Utilities.base64Decode(base64Data);
-  var blob = Utilities.newBlob(decodedData, fileType, fileName);
-  var createdFile = albumFolder.createFile(blob);
-  createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  
-  return createdFile.getUrl();
-}
-
-/**
- * ฟังก์ชันซิงก์ข้อมูลนักเรียนลงชีท "Students" (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ข้อมูลนักเรียนลงชีท "Students" (Non-Destructive Smart Merge)
  */
 function syncStudentsSheet(students, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -448,7 +306,7 @@ function syncStudentsSheet(students, deletedKeys) {
 
   var studentMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 10);
+    var cols = Math.max(sheet.getLastColumn(), 11);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var sid = String(row[0] || "").trim();
@@ -463,7 +321,8 @@ function syncStudentsSheet(students, deletedKeys) {
           academic_year: String(row[6] || ""),
           doc_number: String(row[7] || ""),
           set_number: String(row[8] || ""),
-          status: String(row[9] || "ปกติ")
+          status: String(row[9] || "ปกติ"),
+          updated_at: String(row[10] || "")
         };
       }
     });
@@ -473,50 +332,43 @@ function syncStudentsSheet(students, deletedKeys) {
     students.forEach(function(s) {
       var sid = String(s.student_id || "").trim();
       if (sid) {
-        delete masterDeletedMap[sid.toLowerCase()];
-        studentMap[sid.toLowerCase()] = {
-          student_id: sid,
-          prefix: String(s.prefix || ""),
-          first_name: String(s.first_name || ""),
-          last_name: String(s.last_name || ""),
-          previous_name: String(s.previous_name || ""),
-          grade_level: String(s.grade_level || ""),
-          academic_year: String(s.academic_year || ""),
-          doc_number: String(s.doc_number || ""),
-          set_number: String(s.set_number || s.book_number || ""),
-          status: String(s.status || "ปกติ")
-        };
+        var key = sid.toLowerCase();
+        if (masterDeletedMap[key] && (!s.updated_at || !studentMap[key])) return;
+
+        var incomingTime = s.updated_at || new Date().toISOString();
+        var existing = studentMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          studentMap[key] = {
+            student_id: sid,
+            prefix: String(s.prefix || (existing ? existing.prefix : "")),
+            first_name: String(s.first_name || (existing ? existing.first_name : "")),
+            last_name: String(s.last_name || (existing ? existing.last_name : "")),
+            previous_name: String(s.previous_name || (existing ? existing.previous_name : "")),
+            grade_level: String(s.grade_level || (existing ? existing.grade_level : "")),
+            academic_year: String(s.academic_year || (existing ? existing.academic_year : "")),
+            doc_number: String(s.doc_number || (existing ? existing.doc_number : "")),
+            set_number: String(s.set_number || s.book_number || (existing ? existing.set_number : "")),
+            status: String(s.status || (existing ? existing.status : "ปกติ")),
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ"]);
-
+  var rows = [["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ", "Updated At"]];
   Object.keys(studentMap).forEach(function(key) {
     var s = studentMap[key];
-    rows.push([
-      s.student_id,
-      s.prefix,
-      s.first_name,
-      s.last_name,
-      s.previous_name,
-      s.grade_level,
-      s.academic_year,
-      s.doc_number,
-      s.set_number,
-      s.status
-    ]);
+    rows.push([s.student_id, s.prefix, s.first_name, s.last_name, s.previous_name, s.grade_level, s.academic_year, s.doc_number, s.set_number, s.status, s.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
-  sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#3b82f6").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 11).setValues(rows);
 }
 
 /**
- * ฟังก์ชันซิงก์ข้อมูลเอกสาร ปพ. ลงชีท "Documents" (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ข้อมูลเอกสาร ปพ. ลงชีท "Documents" (Non-Destructive Smart Merge)
  */
 function syncDocumentsSheet(documents, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -537,7 +389,7 @@ function syncDocumentsSheet(documents, deletedKeys) {
 
   var docMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 9);
+    var cols = Math.max(sheet.getLastColumn(), 10);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var dcode = String(row[0] || "").trim();
@@ -559,7 +411,8 @@ function syncDocumentsSheet(documents, deletedKeys) {
           book_number: String(row[5] || ""),
           doc_number: String(row[6] || ""),
           status: String(row[7] || ""),
-          location_code: String(row[8] || "")
+          location_code: String(row[8] || ""),
+          updated_at: String(row[9] || "")
         };
       }
     });
@@ -572,7 +425,9 @@ function syncDocumentsSheet(documents, deletedKeys) {
         dcode = "DOC-" + (d.doc_type_code || "ปพ.1").replace('.', '') + "-" + (d.academic_year || "2565") + "-" + (d.book_number || "01") + "-" + d.doc_number;
       }
       if (dcode) {
-        delete masterDeletedMap[dcode.toLowerCase()];
+        var key = dcode.toLowerCase();
+        if (masterDeletedMap[key] && (!d.updated_at || !docMap[key])) return;
+
         var stdId = String(d.student_id || "");
         var stdName = String(d.student_name || "");
         var docTypeCode = String(d.doc_type_code || "ปพ.1");
@@ -581,47 +436,39 @@ function syncDocumentsSheet(documents, deletedKeys) {
         if (isJunk(stdName)) stdName = "";
         if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
 
-        docMap[dcode.toLowerCase()] = {
-          doc_code: dcode,
-          student_id: stdId,
-          student_name: stdName,
-          doc_type_code: docTypeCode,
-          academic_year: String(d.academic_year || ""),
-          book_number: String(d.book_number || ""),
-          doc_number: String(d.doc_number || ""),
-          status: String(d.status || ""),
-          location_code: String(d.location_code || "")
-        };
+        var incomingTime = d.updated_at || new Date().toISOString();
+        var existing = docMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          docMap[key] = {
+            doc_code: dcode,
+            student_id: stdId || (existing ? existing.student_id : ""),
+            student_name: stdName || (existing ? existing.student_name : ""),
+            doc_type_code: docTypeCode || (existing ? existing.doc_type_code : "ปพ.1"),
+            academic_year: String(d.academic_year || (existing ? existing.academic_year : "")),
+            book_number: String(d.book_number || (existing ? existing.book_number : "")),
+            doc_number: String(d.doc_number || (existing ? existing.doc_number : "")),
+            status: String(d.status || (existing ? existing.status : "")),
+            location_code: String(d.location_code || (existing ? existing.location_code : "")),
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code"]);
-
+  var rows = [["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "Updated At"]];
   Object.keys(docMap).forEach(function(key) {
     var d = docMap[key];
-    rows.push([
-      d.doc_code,
-      d.student_id,
-      d.student_name,
-      d.doc_type_code,
-      d.academic_year,
-      d.book_number,
-      d.doc_number,
-      d.status,
-      d.location_code
-    ]);
+    rows.push([d.doc_code, d.student_id, d.student_name, d.doc_type_code, d.academic_year, d.book_number, d.doc_number, d.status, d.location_code, d.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
-  sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#10b981").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
 }
 
 /**
- * ฟังก์ชันซิงก์ข้อมูลทะเบียนเล่มลงชีท "Books" (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ข้อมูลทะเบียนเล่มลงชีท "Books" (Non-Destructive Smart Merge)
  */
 function syncBooksSheet(books, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -636,7 +483,7 @@ function syncBooksSheet(books, deletedKeys) {
 
   var bookMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 8);
+    var cols = Math.max(sheet.getLastColumn(), 9);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var bcode = String(row[0] || "").trim();
@@ -649,7 +496,8 @@ function syncBooksSheet(books, deletedKeys) {
           start_no: String(row[4] || ""),
           end_no: String(row[5] || ""),
           item_count: Number(row[6] || 0),
-          location_code: String(row[7] || "")
+          location_code: String(row[7] || ""),
+          updated_at: String(row[8] || "")
         };
       }
     });
@@ -658,46 +506,42 @@ function syncBooksSheet(books, deletedKeys) {
   if (Array.isArray(books)) {
     books.forEach(function(b) {
       var bcode = String(b.book_code || "").trim();
-      if (bcode && !masterDeletedMap[bcode.toLowerCase()]) {
-        bookMap[bcode.toLowerCase()] = {
-          book_code: bcode,
-          doc_type_code: String(b.doc_type_code || ""),
-          academic_year: String(b.academic_year || ""),
-          book_number: String(b.book_number || ""),
-          start_no: String(b.start_no || ""),
-          end_no: String(b.end_no || ""),
-          item_count: Number(b.item_count || 0),
-          location_code: String(b.location_code || "")
-        };
+      if (bcode) {
+        var key = bcode.toLowerCase();
+        if (masterDeletedMap[key] && (!b.updated_at || !bookMap[key])) return;
+
+        var incomingTime = b.updated_at || new Date().toISOString();
+        var existing = bookMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          bookMap[key] = {
+            book_code: bcode,
+            doc_type_code: String(b.doc_type_code || (existing ? existing.doc_type_code : "")),
+            academic_year: String(b.academic_year || (existing ? existing.academic_year : "")),
+            book_number: String(b.book_number || (existing ? existing.book_number : "")),
+            start_no: String(b.start_no || (existing ? existing.start_no : "")),
+            end_no: String(b.end_no || (existing ? existing.end_no : "")),
+            item_count: Number(b.item_count !== undefined ? b.item_count : (existing ? existing.item_count : 0)),
+            location_code: String(b.location_code || (existing ? existing.location_code : "")),
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code"]);
-
+  var rows = [["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Updated At"]];
   Object.keys(bookMap).forEach(function(key) {
     var b = bookMap[key];
-    rows.push([
-      b.book_code,
-      b.doc_type_code,
-      b.academic_year,
-      b.book_number,
-      b.start_no,
-      b.end_no,
-      b.item_count,
-      b.location_code
-    ]);
+    rows.push([b.book_code, b.doc_type_code, b.academic_year, b.book_number, b.start_no, b.end_no, b.item_count, b.location_code, b.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 8).setValues(rows);
-  sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#8b5cf6").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
 }
 
 /**
- * ฟังก์ชันซิงก์ประวัติคำขอสำเนาเอกสารลงชีท "Loans" (Doc_Requests) (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ประวัติคำขอสำเนาเอกสารลงชีท "Loans" (Non-Destructive Smart Merge)
  */
 function syncLoansSheet(loans, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -718,7 +562,7 @@ function syncLoansSheet(loans, deletedKeys) {
 
   var loanMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 10);
+    var cols = Math.max(sheet.getLastColumn(), 11);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var lcode = String(row[0] || "").trim();
@@ -741,7 +585,8 @@ function syncLoansSheet(loans, deletedKeys) {
           loan_date: String(row[6] || ""),
           return_due_date: String(row[7] || ""),
           reason: String(row[8] || ""),
-          status_text: String(row[9] || "")
+          status_text: String(row[9] || ""),
+          updated_at: String(row[10] || "")
         };
       }
     });
@@ -750,7 +595,10 @@ function syncLoansSheet(loans, deletedKeys) {
   if (Array.isArray(loans)) {
     loans.forEach(function(l) {
       var lcode = String(l.loan_code || "").trim();
-      if (lcode && !masterDeletedMap[lcode.toLowerCase()]) {
+      if (lcode) {
+        var key = lcode.toLowerCase();
+        if (masterDeletedMap[key] && (!l.updated_at || !loanMap[key])) return;
+
         var statusText = (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา';
         var stdId = String(l.student_id || "");
         var stdName = String(l.student_name || "");
@@ -760,49 +608,40 @@ function syncLoansSheet(loans, deletedKeys) {
         if (isJunk(stdName)) stdName = "";
         if (isJunk(docTypeCode)) docTypeCode = "ปพ.1";
 
-        loanMap[lcode.toLowerCase()] = {
-          loan_code: lcode.replace('LN-', 'REQ-'),
-          student_id: stdId,
-          student_name: stdName,
-          doc_type_code: docTypeCode,
-          borrower_name: String(l.borrower_name || ""),
-          borrower_dept: String(l.borrower_dept || ""),
-          loan_date: String(l.loan_date || ""),
-          return_due_date: String(l.return_due_date || ""),
-          reason: String(l.reason || ""),
-          status_text: statusText
-        };
+        var incomingTime = l.updated_at || new Date().toISOString();
+        var existing = loanMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          loanMap[key] = {
+            loan_code: lcode.replace('LN-', 'REQ-'),
+            student_id: stdId || (existing ? existing.student_id : ""),
+            student_name: stdName || (existing ? existing.student_name : ""),
+            doc_type_code: docTypeCode || (existing ? existing.doc_type_code : "ปพ.1"),
+            borrower_name: String(l.borrower_name || (existing ? existing.borrower_name : "")),
+            borrower_dept: String(l.borrower_dept || (existing ? existing.borrower_dept : "")),
+            loan_date: String(l.loan_date || (existing ? existing.loan_date : "")),
+            return_due_date: String(l.return_due_date || (existing ? existing.return_due_date : "")),
+            reason: String(l.reason || (existing ? existing.reason : "")),
+            status_text: statusText,
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ"]);
-
+  var rows = [["เลขที่คำขอ", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ผู้ขอสำเนา/ผู้ยื่นเรื่อง", "สังกัด/ความสัมพันธ์", "วันที่ยื่นคำขอ", "วันที่กำหนดรับ", "วัตถุประสงค์ในการขอ", "สถานะคำขอ", "Updated At"]];
   Object.keys(loanMap).forEach(function(key) {
     var l = loanMap[key];
-    rows.push([
-      l.loan_code,
-      l.student_id,
-      l.student_name,
-      l.doc_type_code,
-      l.borrower_name,
-      l.borrower_dept,
-      l.loan_date,
-      l.return_due_date,
-      l.reason,
-      l.status_text
-    ]);
+    rows.push([l.loan_code, l.student_id, l.student_name, l.doc_type_code, l.borrower_name, l.borrower_dept, l.loan_date, l.return_due_date, l.reason, l.status_text, l.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 10).setValues(rows);
-  sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#f59e0b").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 11).setValues(rows);
 }
 
 /**
- * ฟังก์ชันซิงก์ข้อมูลสถานที่จัดเก็บลงชีท "Storage_Locations" (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ข้อมูลสถานที่จัดเก็บลงชีท "Storage_Locations" (Non-Destructive Smart Merge)
  */
 function syncStorageLocationsSheet(locations, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -817,7 +656,7 @@ function syncStorageLocationsSheet(locations, deletedKeys) {
 
   var locMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 7);
+    var cols = Math.max(sheet.getLastColumn(), 8);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var code = String(row[0] || "").trim();
@@ -829,7 +668,8 @@ function syncStorageLocationsSheet(locations, deletedKeys) {
           cabinet: String(row[3] || ""),
           shelf: String(row[4] || ""),
           folder: String(row[5] || ""),
-          description: String(row[6] || "")
+          description: String(row[6] || ""),
+          updated_at: String(row[7] || "")
         };
       }
     });
@@ -838,44 +678,41 @@ function syncStorageLocationsSheet(locations, deletedKeys) {
   if (Array.isArray(locations)) {
     locations.forEach(function(l) {
       var code = String(l.code || "").trim();
-      if (code && !masterDeletedMap[code.toLowerCase()]) {
-        locMap[code.toLowerCase()] = {
-          code: code,
-          building: String(l.building || ""),
-          room: String(l.room || ""),
-          cabinet: String(l.cabinet || ""),
-          shelf: String(l.shelf || ""),
-          folder: String(l.folder || ""),
-          description: String(l.description || "")
-        };
+      if (code) {
+        var key = code.toLowerCase();
+        if (masterDeletedMap[key] && (!l.updated_at || !locMap[key])) return;
+
+        var incomingTime = l.updated_at || new Date().toISOString();
+        var existing = locMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          locMap[key] = {
+            code: code,
+            building: String(l.building || (existing ? existing.building : "")),
+            room: String(l.room || (existing ? existing.room : "")),
+            cabinet: String(l.cabinet || (existing ? existing.cabinet : "")),
+            shelf: String(l.shelf || (existing ? existing.shelf : "")),
+            folder: String(l.folder || (existing ? existing.folder : "")),
+            description: String(l.description || (existing ? existing.description : "")),
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย"]);
-
+  var rows = [["Location Code", "อาคาร", "ห้อง", "ตู้", "ชั้น", "แฟ้ม", "คำอธิบาย", "Updated At"]];
   Object.keys(locMap).forEach(function(key) {
     var l = locMap[key];
-    rows.push([
-      l.code,
-      l.building,
-      l.room,
-      l.cabinet,
-      l.shelf,
-      l.folder,
-      l.description
-    ]);
+    rows.push([l.code, l.building, l.room, l.cabinet, l.shelf, l.folder, l.description, l.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 7).setValues(rows);
-  sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#64748b").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 8).setValues(rows);
 }
 
 /**
- * ฟังก์ชันซิงก์ข้อมูลบัญชีผู้ใช้งานลงชีท "Users" (พร้อมระบบ Smart Differential Concurrency Merge)
+ * ฟังก์ชันซิงก์ข้อมูลบัญชีผู้ใช้งานลงชีท "Users" (Non-Destructive Smart Merge)
  */
 function syncUsersSheet(users, deletedKeys) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -890,7 +727,7 @@ function syncUsersSheet(users, deletedKeys) {
 
   var userMap = {};
   if (sheet.getLastRow() > 1 && sheet.getLastColumn() > 0) {
-    var cols = Math.max(sheet.getLastColumn(), 8);
+    var cols = Math.max(sheet.getLastColumn(), 9);
     var existingValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
     existingValues.forEach(function(row) {
       var uname = String(row[0] || "").trim();
@@ -903,7 +740,8 @@ function syncUsersSheet(users, deletedKeys) {
           role_code: String(row[4] || "staff"),
           email: String(row[5] || ""),
           created_at: String(row[6] || ""),
-          password_hash: String(row[7] || "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918")
+          password_hash: String(row[7] || "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"),
+          updated_at: String(row[8] || "")
         };
       }
     });
@@ -912,43 +750,38 @@ function syncUsersSheet(users, deletedKeys) {
   if (Array.isArray(users)) {
     users.forEach(function(u) {
       var uname = String(u.username || "").trim();
-      if (uname && !masterDeletedMap[uname.toLowerCase()]) {
-        var existing = userMap[uname.toLowerCase()];
-        userMap[uname.toLowerCase()] = {
-          username: uname,
-          title: String(u.title || (existing ? existing.title : "")),
-          first_name: String(u.first_name || (existing ? existing.first_name : "")),
-          last_name: String(u.last_name || (existing ? existing.last_name : "")),
-          role_code: String(u.role_code || (existing ? existing.role_code : "staff")),
-          email: String(u.email || (existing ? existing.email : "")),
-          created_at: String(u.created_at || (existing ? existing.created_at : "")),
-          password_hash: String(u.password_hash || (existing ? existing.password_hash : "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"))
-        };
+      if (uname) {
+        var key = uname.toLowerCase();
+        if (masterDeletedMap[key] && (!u.updated_at || !userMap[key])) return;
+
+        var incomingTime = u.updated_at || new Date().toISOString();
+        var existing = userMap[key];
+
+        if (!existing || !existing.updated_at || incomingTime >= existing.updated_at) {
+          userMap[key] = {
+            username: uname,
+            title: String(u.title || (existing ? existing.title : "")),
+            first_name: String(u.first_name || (existing ? existing.first_name : "")),
+            last_name: String(u.last_name || (existing ? existing.last_name : "")),
+            role_code: String(u.role_code || (existing ? existing.role_code : "staff")),
+            email: String(u.email || (existing ? existing.email : "")),
+            created_at: String(u.created_at || (existing ? existing.created_at : "")),
+            password_hash: String(u.password_hash || (existing ? existing.password_hash : "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918")),
+            updated_at: incomingTime
+          };
+        }
       }
     });
   }
 
-  sheet.clearContents();
-  var rows = [];
-  rows.push(["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง", "Password Hash"]);
-
+  var rows = [["ชื่อผู้ใช้งาน (Username)", "คำนำหน้า", "ชื่อ", "นามสกุล", "บทบาทหน้าที่ (Role)", "อีเมล", "วันที่สร้าง", "Password Hash", "Updated At"]];
   Object.keys(userMap).forEach(function(key) {
     var u = userMap[key];
-    rows.push([
-      u.username,
-      u.title,
-      u.first_name,
-      u.last_name,
-      u.role_code,
-      u.email,
-      u.created_at,
-      u.password_hash
-    ]);
+    rows.push([u.username, u.title, u.first_name, u.last_name, u.role_code, u.email, u.created_at, u.password_hash, u.updated_at]);
   });
 
-  sheet.getRange(1, 1, rows.length, 8).setValues(rows);
-  sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#ef4444").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
+  sheet.clearContents();
+  sheet.getRange(1, 1, rows.length, 9).setValues(rows);
 }
 
 /**
@@ -959,23 +792,13 @@ function syncSettingsSheet(settings) {
   var sheet = ss.getSheetByName("Settings") || ss.insertSheet("Settings");
   sheet.clearContents();
   
-  var rows = [];
-  rows.push(["Setting Key", "Value", "Description"]);
-  
+  var rows = [["Setting Key", "Value", "Description"]];
   if (settings && typeof settings === "object") {
-    var keys = Object.keys(settings);
-    keys.forEach(function(key) {
-      rows.push([
-        key,
-        String(settings[key] || ""),
-        "ตั้งค่าระบบ EDMRS"
-      ]);
+    Object.keys(settings).forEach(function(key) {
+      rows.push([key, String(settings[key] || ""), "ตั้งค่าระบบ EDMRS"]);
     });
   }
-  
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
-  sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#0f766e").setFontColor("#ffffff");
-  sheet.setFrozenRows(1);
 }
 
 /**
@@ -985,24 +808,8 @@ function getAllSheetData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var result = {};
   var sheets = ss.getSheets();
-  
   sheets.forEach(function(sh) {
-    var name = sh.getName();
-    result[name] = sh.getDataRange().getValues();
+    result[sh.getName()] = sh.getDataRange().getValues();
   });
-  
   return result;
-}
-
-/**
- * ฟังก์ชันสำหรับกด "Run" ทดสอบใน Apps Script Editor เพื่อป้องกัน TypeError
- */
-function testDoGet() {
-  var res = doGet({ parameter: { action: "ping" } });
-  Logger.log(res.getContent());
-}
-
-function testDoPost() {
-  var res = doPost({ postData: { contents: JSON.stringify({ action: "ping" }) } });
-  Logger.log(res.getContent());
 }

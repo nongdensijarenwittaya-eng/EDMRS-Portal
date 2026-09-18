@@ -218,7 +218,7 @@ const loansView = {
     // In-table quick search
     const tableSearch = document.getElementById('loans-table-search');
     if (tableSearch) {
-      tableSearch.onkeyup = () => {
+      const filterTable = () => {
         const term = tableSearch.value.toLowerCase();
         const rows = document.querySelectorAll('.loan-row');
         rows.forEach(row => {
@@ -226,6 +226,8 @@ const loansView = {
           row.style.display = text.includes(term) ? '' : 'none';
         });
       };
+      tableSearch.oninput = filterTable;
+      tableSearch.onkeyup = filterTable;
     }
 
     const syncBtn = document.getElementById('sync-loans-sheets-btn');
@@ -404,6 +406,7 @@ const loansView = {
               loanToEdit.loan_date = loanDate;
               loanToEdit.return_due_date = dueDate;
               loanToEdit.reason = reason;
+              loanToEdit.updated_at = new Date().toISOString();
               window.db.addAuditLog('คำขอสำเนาเอกสาร', 'แก้ไขคำขอ', `แก้ไขข้อมูลคำขอ ${loanToEdit.loan_code ? loanToEdit.loan_code.replace('LN-', 'REQ-') : ''}`);
               window.db.save();
               window.db.syncToGoogleSheets().catch(err => console.warn('Sync loans:', err));
@@ -438,7 +441,8 @@ const loansView = {
               loan_time: new Date().toLocaleTimeString('th-TH').slice(0, 5),
               reason: reason,
               return_due_date: dueDate,
-              status: 'pending'
+              status: 'pending',
+              updated_at: new Date().toISOString()
             });
 
             window.db.data.loans.unshift(newLoan);

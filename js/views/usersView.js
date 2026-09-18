@@ -3,8 +3,25 @@
    ========================================================================== */
 
 const usersView = {
+  filterState: {
+    search: ''
+  },
+
   render() {
-    const users = window.db.data.users || [];
+    let users = window.db.data.users || [];
+    if (this.filterState.search) {
+      const q = String(this.filterState.search).toLowerCase().trim();
+      users = users.filter(u =>
+        u && (
+          String(u.username || '').toLowerCase().includes(q) ||
+          String(u.first_name || '').toLowerCase().includes(q) ||
+          String(u.last_name || '').toLowerCase().includes(q) ||
+          String(u.role_code || '').toLowerCase().includes(q) ||
+          String(u.email || '').toLowerCase().includes(q) ||
+          `${String(u.title || '')}${String(u.first_name || '')} ${String(u.last_name || '')}`.toLowerCase().includes(q)
+        )
+      );
+    }
     const roles = window.db.data.roles || [];
     const canManage = window.authSystem.hasPermission('manage_users');
 
@@ -35,8 +52,11 @@ const usersView = {
 
       <!-- Users Data Table -->
       <div class="card" style="padding: 0; margin-bottom: 1.5rem;">
-        <div class="card-header" style="padding: 1rem 1.25rem;">
-          <h3 class="card-title"><i class="fa-solid fa-users"></i> บัญชีผู้ใช้งานระบบทั้งหมด</h3>
+        <div class="card-header" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <h3 class="card-title" style="margin: 0;"><i class="fa-solid fa-users"></i> บัญชีผู้ใช้งานระบบทั้งหมด</h3>
+          <div style="max-width: 300px; width: 100%;">
+            <input type="text" id="user-search-input" class="form-control form-control-sm" placeholder="🔍 ค้นหาผู้ใช้งาน (Username, ชื่อ, บทบาท, อีเมล)..." value="${this.filterState.search}">
+          </div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -52,7 +72,7 @@ const usersView = {
               </tr>
             </thead>
             <tbody>
-              ${users.map(u => `
+              ${users.length ? users.map(u => `
                 <tr>
                   <td><strong>${u.username}</strong></td>
                   <td>${u.title || ''}${u.first_name} ${u.last_name}</td>
@@ -69,11 +89,9 @@ const usersView = {
                       <button class="btn btn-warning btn-sm edit-user-btn" data-id="${u.id}" title="แก้ไขผู้ใช้งาน">
                         <i class="fa-solid fa-pen-to-square"></i>
                       </button>
-                      ${u.username !== 'admin' ? `
-                        <button class="btn btn-danger btn-sm delete-user-btn" data-id="${u.id}" data-user="${u.username}" title="ลบผู้ใช้งาน">
-                          <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                      ` : ''}
+                      <button class="btn btn-danger btn-sm delete-user-btn" data-id="${u.id}" data-user="${u.username}" title="ลบผู้ใช้งาน">
+                        <i class="fa-solid fa-trash-can"></i>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -120,7 +138,37 @@ const usersView = {
     `;
   },
 
+  refreshPage() {
+    const searchEl = document.getElementById('user-search-input');
+    const cursorPos = searchEl ? searchEl.selectionStart : null;
+    const isFocused = searchEl && document.activeElement === searchEl;
+
+    const main = document.getElementById('main-content');
+    if (main) {
+      main.innerHTML = this.render();
+      this.initEvents();
+
+      if (isFocused) {
+        const newSearchEl = document.getElementById('user-search-input');
+        if (newSearchEl) {
+          newSearchEl.focus();
+          if (cursorPos !== null) {
+            newSearchEl.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      }
+    }
+  },
+
   initEvents() {
+    const searchInput = document.getElementById('user-search-input');
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        this.filterState.search = e.target.value;
+        this.refreshPage();
+      };
+    }
+
     const addBtn = document.getElementById('add-user-btn');
     if (addBtn) addBtn.onclick = () => this.openAddUserModal();
 
@@ -178,11 +226,7 @@ const usersView = {
               console.warn('Sync users on delete:', err);
               window.utils.showToast('ลบข้อมูลในเครื่องเรียบร้อยแล้ว', 'warning');
             }
-            const mainContent = document.getElementById('main-content');
-            if (mainContent) {
-              mainContent.innerHTML = this.render();
-              this.initEvents();
-            }
+            this.refreshPage();
           }
         );
       };
@@ -230,7 +274,8 @@ const usersView = {
           <div class="form-group">
             <label class="form-label required">สิทธิ์การใช้งาน (Role)</label>
             <select id="modal-user-role" class="form-control" required>
-              <option value="administrator" ${rVal === 'administrator' ? 'selected' : ''}>Administrator</option>
+              <option value="super_admin" ${rVal === 'super_admin' ? 'selected' : ''}>Super Admin (ผู้ดูแลระบบสูงสุด)</option>
+              <option value="administrator" ${rVal === 'administrator' ? 'selected' : ''}>Administrator (ผู้ดูแลระบบ)</option>
               <option value="staff" ${rVal === 'staff' ? 'selected' : ''}>Staff (เจ้าหน้าที่ทะเบียน)</option>
               <option value="viewer" ${rVal === 'viewer' ? 'selected' : ''}>Viewer (ผู้เข้าชม)</option>
             </select>
@@ -271,11 +316,16 @@ const usersView = {
               userToEdit.last_name = ln;
               userToEdit.role_code = r;
               userToEdit.email = em;
+              userToEdit.updated_at = new Date().toISOString();
               window.db.addAuditLog('ผู้ใช้งาน', 'แก้ไขผู้ใช้', `แก้ไขข้อมูลบัญชีผู้ใช้ ${u}`);
-              window.db.save();
-              window.db.syncToGoogleSheets().catch(err => console.warn('Sync users:', err));
-              window.utils.showToast(`แก้ไขข้อมูลผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
-              window.location.reload();
+              window.db.save(true, null, true);
+
+              window.utils.showToast('กำลังซิงก์การแก้ไขลง Google Sheets...', 'info');
+              window.db.syncToGoogleSheets().then(() => {
+                window.utils.showToast(`แก้ไขข้อมูลผู้ใช้งาน ${u} และซิงก์ Google Sheets เรียบร้อยแล้ว`, 'success');
+              }).catch(err => console.warn('Sync users edit:', err));
+
+              this.refreshPage();
               return;
             }
 
@@ -289,14 +339,19 @@ const usersView = {
               role_code: r,
               email: em,
               status: 'active',
-              created_at: new Date().toISOString().slice(0, 10)
+              created_at: new Date().toISOString().slice(0, 10),
+              updated_at: new Date().toISOString()
             });
 
             window.db.addAuditLog('ผู้ใช้งาน', 'เพิ่มผู้ใช้', `สร้างผู้ใช้งานใหม่ ${u} (${fn} ${ln}) สิทธิ์ ${r}`);
-            window.db.save();
-            window.db.syncToGoogleSheets().catch(err => console.warn('Sync users:', err));
-            window.utils.showToast(`สร้างผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
-            window.location.reload();
+            window.db.save(true, null, true);
+
+            window.utils.showToast('กำลังซิงก์ผู้ใช้ใหม่ลง Google Sheets...', 'info');
+            window.db.syncToGoogleSheets().then(() => {
+              window.utils.showToast(`สร้างผู้ใช้งาน ${u} และซิงก์ Google Sheets เรียบร้อยแล้ว`, 'success');
+            }).catch(err => console.warn('Sync users add:', err));
+
+            this.refreshPage();
           }
         }
       ]

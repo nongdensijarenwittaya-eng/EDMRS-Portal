@@ -4,8 +4,12 @@
    ========================================================================== */
 
 const booksView = {
+  filterState: {
+    search: ''
+  },
+
   render() {
-    const books = (window.db && window.db.getBooks) ? window.db.getBooks() : [];
+    const books = (window.db && window.db.getBooks) ? window.db.getBooks(this.filterState) : [];
     const canCreate = (window.authSystem && window.authSystem.hasPermission) ? window.authSystem.hasPermission('create_documents') : false;
 
     return `
@@ -53,6 +57,15 @@ const booksView = {
         </div>
       </div>
 
+      <!-- Search Filter Bar -->
+      <div class="card" style="padding: 0.85rem 1.25rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div style="flex: 1;">
+            <input type="text" id="book-search-input" class="form-control" placeholder="🔍 ค้นหาเล่มเอกสาร (รหัสเล่ม, ประเภท ปพ., ปีการศึกษา, เล่มที่, Location)..." value="${this.filterState.search}">
+          </div>
+        </div>
+      </div>
+
       <!-- Books Grid Cards -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
         ${books.length ? books.map(b => {
@@ -91,9 +104,6 @@ const booksView = {
 
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                 <div style="display: flex; gap: 0.35rem;">
-                  <button class="btn btn-secondary btn-sm open-drive-album-btn" data-code="${b.book_code}">
-                    <i class="fa-brands fa-google-drive text-primary"></i> อัลบั้มไดร์ฟ
-                  </button>
                   <button class="btn btn-primary btn-sm view-book-detail-btn" data-code="${b.book_code}">
                     <i class="fa-solid fa-list-ul"></i> รายชื่อ (${enclosedDocs.length})
                   </button>
@@ -112,8 +122,8 @@ const booksView = {
         }).join('') : `
           <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
             <i class="fa-solid fa-book-bookmark text-muted" style="font-size: 3rem; margin-bottom: 1rem;"></i>
-            <h4>ยังไม่มีข้อมูลทะเบียนเล่มเอกสาร</h4>
-            <p style="color: var(--text-muted); font-size: 0.9rem;">สามารถกดปุ่ม "เพิ่มทะเบียนเล่มใหม่" เพื่อสร้างเล่มเอกสารได้ทันที</p>
+            <h4>ไม่พบข้อมูลทะเบียนเล่มเอกสารตามคำค้นหา</h4>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">ลองค้นหาด้วยคำอื่น หรือกดปุ่ม "เพิ่มทะเบียนเล่มใหม่"</p>
           </div>
         `}
       </div>
@@ -121,14 +131,36 @@ const booksView = {
   },
 
   refreshPage() {
+    const searchEl = document.getElementById('book-search-input');
+    const cursorPos = searchEl ? searchEl.selectionStart : null;
+    const isFocused = searchEl && document.activeElement === searchEl;
+
     const main = document.getElementById('main-content');
     if (main) {
       main.innerHTML = this.render();
       this.initEvents();
+
+      if (isFocused) {
+        const newSearchEl = document.getElementById('book-search-input');
+        if (newSearchEl) {
+          newSearchEl.focus();
+          if (cursorPos !== null) {
+            newSearchEl.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      }
     }
   },
 
   initEvents() {
+    const searchInput = document.getElementById('book-search-input');
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        this.filterState.search = e.target.value;
+        this.refreshPage();
+      };
+    }
+
     const addBtn = document.getElementById('add-book-btn');
     if (addBtn) addBtn.onclick = () => this.openAddBookModal();
 
@@ -511,6 +543,7 @@ const booksView = {
               bookToEdit.end_no = end;
               bookToEdit.item_count = computedCount;
               bookToEdit.location_code = loc;
+              bookToEdit.updated_at = new Date().toISOString();
               window.db.addAuditLog('ทะเบียนเล่ม', 'แก้ไขเล่ม', `แก้ไขเล่ม ${bookToEdit.book_code}`);
               window.db.save();
               window.utils.showToast('แก้ไขข้อมูลเล่มเรียบร้อยแล้ว', 'success');
@@ -529,7 +562,8 @@ const booksView = {
               end_no: end,
               item_count: computedCount,
               location_code: loc,
-              status: 'active'
+              status: 'active',
+              updated_at: new Date().toISOString()
             });
 
             window.db.addAuditLog('ทะเบียนเล่ม', 'เพิ่มเล่ม', `เพิ่มเล่ม ${code}`);

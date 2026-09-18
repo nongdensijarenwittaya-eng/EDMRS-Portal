@@ -4,8 +4,25 @@
    ========================================================================== */
 
 const locationsView = {
+  filterState: {
+    search: ''
+  },
+
   render() {
-    const locations = window.db.getLocations();
+    let locations = window.db.getLocations();
+    if (this.filterState.search) {
+      const q = String(this.filterState.search).toLowerCase().trim();
+      locations = locations.filter(l =>
+        l && (
+          String(l.code || '').toLowerCase().includes(q) ||
+          String(l.building || '').toLowerCase().includes(q) ||
+          String(l.room || '').toLowerCase().includes(q) ||
+          String(l.cabinet || '').toLowerCase().includes(q) ||
+          String(l.shelf || '').toLowerCase().includes(q) ||
+          String(l.folder || '').toLowerCase().includes(q)
+        )
+      );
+    }
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -30,6 +47,11 @@ const locationsView = {
         </div>
       </div>
 
+      <!-- Filter Controls -->
+      <div class="card" style="padding: 0.85rem 1.25rem; margin-bottom: 1.25rem;">
+        <input type="text" id="loc-search-input" class="form-control" placeholder="🔍 ค้นหาตำแหน่งจัดเก็บ (Location Code, อาคาร, ห้อง, ตู้, ชั้น, แฟ้ม)..." value="${this.filterState.search}">
+      </div>
+
       <!-- Locations Table -->
       <div class="card" style="padding: 0;">
         <div class="table-responsive">
@@ -47,7 +69,7 @@ const locationsView = {
               </tr>
             </thead>
             <tbody>
-              ${locations.map(l => {
+              ${locations.length ? locations.map(l => {
                 const docCount = window.db.getDocuments({ location_code: l.code }).length;
                 return `
                   <tr>
@@ -70,7 +92,9 @@ const locationsView = {
                     </td>
                   </tr>
                 `;
-              }).join('')}
+              }).join('') : `
+                <tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">ไม่พบตำแหน่งจัดเก็บที่ตรงกับคำค้นหา</td></tr>
+              `}
             </tbody>
           </table>
         </div>
@@ -78,7 +102,36 @@ const locationsView = {
     `;
   },
 
+  refreshPage() {
+    const searchEl = document.getElementById('loc-search-input');
+    const cursorPos = searchEl ? searchEl.selectionStart : null;
+    const isFocused = searchEl && document.activeElement === searchEl;
+
+    const main = document.getElementById('main-content');
+    if (main) {
+      main.innerHTML = this.render();
+      this.initEvents();
+
+      if (isFocused) {
+        const newSearchEl = document.getElementById('loc-search-input');
+        if (newSearchEl) {
+          newSearchEl.focus();
+          if (cursorPos !== null) {
+            newSearchEl.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      }
+    }
+  },
+
   initEvents() {
+    const searchInput = document.getElementById('loc-search-input');
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        this.filterState.search = e.target.value;
+        this.refreshPage();
+      };
+    }
     const addBtn = document.getElementById('add-location-btn');
     if (addBtn) addBtn.onclick = () => this.openAddLocationModal();
 
@@ -213,6 +266,7 @@ const locationsView = {
               locToEdit.shelf = s;
               locToEdit.folder = f;
               locToEdit.description = desc;
+              locToEdit.updated_at = new Date().toISOString();
               window.db.addAuditLog('สถานที่จัดเก็บ', 'แก้ไขตำแหน่ง', `แก้ไขตำแหน่ง ${locToEdit.code}`);
               window.db.save();
               window.db.syncToGoogleSheets().catch(err => console.warn('Sync locations:', err));
@@ -234,7 +288,8 @@ const locationsView = {
               cabinet: c,
               shelf: s,
               folder: f,
-              description: desc
+              description: desc,
+              updated_at: new Date().toISOString()
             });
 
             window.db.addAuditLog('สถานที่จัดเก็บ', 'เพิ่มตำแหน่ง', `เพิ่มตำแหน่งใหม่ ${code}`);

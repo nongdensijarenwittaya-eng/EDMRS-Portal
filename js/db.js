@@ -73,6 +73,7 @@ class RelationalDatabase {
           if (!this.data.documents || this.data.documents.length === 0) this.seedDocuments();
           if (!this.data.books || this.data.books.length === 0) this.seedBooks();
           if (!this.data.storage_locations || this.data.storage_locations.length === 0) this.seedStorageLocations();
+          this.startAutoPolling();
           return;
         }
       } catch (e) {
@@ -82,6 +83,7 @@ class RelationalDatabase {
     this.seedDefaultData();
     if (!this.data.settings) this.data.settings = {};
     this.data.settings.sheets_url = defaultUrl;
+    this.startAutoPolling();
   }
 
   isJunkText(str) {
@@ -429,9 +431,31 @@ class RelationalDatabase {
   deleteStudent(studentId) {
     const target = String(studentId || '').trim();
     if (!target) return;
+    const targetLower = target.toLowerCase();
+
+    // 1. Delete student record & track deleted key
     this.trackDeletedKey('students', target);
-    this.data.students = (this.data.students || []).filter(s => String(s.student_id || '').trim().toLowerCase() !== target.toLowerCase());
-    this.addAuditLog('ข้อมูลนักเรียน', 'ลบนักเรียน', `ลบข้อมูลนักเรียน ${target}`);
+    this.data.students = (this.data.students || []).filter(s => String(s.student_id || '').trim().toLowerCase() !== targetLower);
+
+    // 2. Cascade delete all documents associated with this student_id
+    const docsToDelete = (this.data.documents || []).filter(d => String(d.student_id || '').trim().toLowerCase() === targetLower);
+    docsToDelete.forEach(d => {
+      if (d.doc_code) {
+        this.trackDeletedKey('documents', d.doc_code);
+      }
+    });
+    this.data.documents = (this.data.documents || []).filter(d => String(d.student_id || '').trim().toLowerCase() !== targetLower);
+
+    // 3. Cascade delete all document copy requests associated with this student_id
+    const loansToDelete = (this.data.loans || []).filter(l => String(l.student_id || '').trim().toLowerCase() === targetLower);
+    loansToDelete.forEach(l => {
+      if (l.loan_code) {
+        this.trackDeletedKey('loans', l.loan_code);
+      }
+    });
+    this.data.loans = (this.data.loans || []).filter(l => String(l.student_id || '').trim().toLowerCase() !== targetLower);
+
+    this.addAuditLog('ข้อมูลนักเรียน', 'ลบนักเรียนและเอกสาร', `ลบข้อมูลนักเรียน ${target} พร้อมทะเบียนเอกสารและคำขอสำเนาทั้งหมดที่เกี่ยวข้อง`);
     this.save(true);
   }
 
@@ -481,29 +505,39 @@ class RelationalDatabase {
   getStudents(filter = {}) {
     let result = [...(this.data.students || [])];
     if (filter.search) {
-      const q = filter.search.toLowerCase().trim();
-      result = result.filter(s =>
-        s.student_id.toLowerCase().includes(q) ||
-        s.citizen_id.includes(q) ||
-        s.first_name.toLowerCase().includes(q) ||
-        s.last_name.toLowerCase().includes(q) ||
-        `${s.prefix}${s.first_name} ${s.last_name}`.toLowerCase().includes(q)
-      );
+      const q = String(filter.search).toLowerCase().trim();
+      result = result.filter(s => {
+        if (!s) return false;
+        const sid = String(s.student_id || '').toLowerCase();
+        const cid = String(s.citizen_id || '').toLowerCase();
+        const fn = String(s.first_name || '').toLowerCase();
+        const ln = String(s.last_name || '').toLowerCase();
+        const dn = String(s.doc_number || '').toLowerCase();
+        const sn = String(s.set_number || s.book_number || '').toLowerCase();
+        const bc = String(s.book_code || '').toLowerCase();
+        const fullName = `${String(s.prefix || '')}${String(s.first_name || '')} ${String(s.last_name || '')}`.toLowerCase();
+
+        return sid.includes(q) || cid.includes(q) || fn.includes(q) || ln.includes(q) ||
+               dn.includes(q) || sn.includes(q) || bc.includes(q) || fullName.includes(q);
+      });
     }
     if (filter.academic_year) {
-      result = result.filter(s => s.academic_year === filter.academic_year);
+      const year = String(filter.academic_year).trim();
+      result = result.filter(s => s && String(s.academic_year || '').trim() === year);
     }
     if (filter.grade_level) {
-      result = result.filter(s => s.grade_level === filter.grade_level);
+      const grade = String(filter.grade_level).trim();
+      result = result.filter(s => s && String(s.grade_level || '').trim() === grade);
     }
     if (filter.room) {
-      result = result.filter(s => s.room === filter.room);
+      const room = String(filter.room).trim();
+      result = result.filter(s => s && String(s.room || '').trim() === room);
     }
     return result;
   }
 
   getStudentById(studentId) {
-    return (this.data.students || []).find(s => s.student_id === studentId || s.id == studentId);
+    return (this.data.students || []).find(s => s && (String(s.student_id) === String(studentId) || s.id == studentId));
   }
 
   getDocuments(filter = {}) {
@@ -526,11 +560,11 @@ class RelationalDatabase {
         if (!existingDoc.student_name && (s.prefix || s.first_name || s.last_name)) {
           existingDoc.student_name = `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim();
         }
-        if (!existingDoc.book_code && s.book_code) existingDoc.book_code = s.book_code;
-        if (!existingDoc.book_number && (s.set_number || s.book_number)) existingDoc.book_number = s.set_number || s.book_number;
-        if (!existingDoc.academic_year && s.academic_year) existingDoc.academic_year = s.academic_year;
-        if (!existingDoc.doc_number && s.doc_number) existingDoc.doc_number = s.doc_number;
-        if (!existingDoc.doc_type_code && s.doc_type_code) existingDoc.doc_type_code = s.doc_type_code;
+        if (s.book_code) existingDoc.book_code = s.book_code;
+        if (s.set_number || s.book_number) existingDoc.book_number = s.set_number || s.book_number;
+        if (s.academic_year) existingDoc.academic_year = s.academic_year;
+        if (s.doc_number) existingDoc.doc_number = s.doc_number;
+        if (s.doc_type_code) existingDoc.doc_type_code = s.doc_type_code;
       } else {
         const docTypeCode = s.doc_type_code || 'ปพ.1';
         const cleanType = String(docTypeCode).replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ');
@@ -633,19 +667,24 @@ class RelationalDatabase {
   getBooks(filter = {}) {
     let result = [...(this.data.books || [])];
     if (filter.search) {
-      const q = filter.search.toLowerCase().trim();
-      result = result.filter(b =>
-        b.book_code.toLowerCase().includes(q) ||
-        b.doc_type_code.toLowerCase().includes(q) ||
-        b.book_number.includes(q) ||
-        (b.location_code && b.location_code.toLowerCase().includes(q))
-      );
+      const q = String(filter.search).toLowerCase().trim();
+      result = result.filter(b => {
+        if (!b) return false;
+        const bc = String(b.book_code || '').toLowerCase();
+        const dt = String(b.doc_type_code || '').toLowerCase();
+        const bn = String(b.book_number || '').toLowerCase();
+        const ay = String(b.academic_year || '').toLowerCase();
+        const lc = String(b.location_code || '').toLowerCase();
+        return bc.includes(q) || dt.includes(q) || bn.includes(q) || ay.includes(q) || lc.includes(q);
+      });
     }
     if (filter.doc_type_code) {
-      result = result.filter(b => b.doc_type_code === filter.doc_type_code);
+      const dt = String(filter.doc_type_code).trim();
+      result = result.filter(b => b && String(b.doc_type_code || '').trim() === dt);
     }
     if (filter.academic_year) {
-      result = result.filter(b => b.academic_year === filter.academic_year);
+      const ay = String(filter.academic_year).trim();
+      result = result.filter(b => b && String(b.academic_year || '').trim() === ay);
     }
     return result;
   }
@@ -655,22 +694,26 @@ class RelationalDatabase {
   }
 
   getLocationByCode(code) {
-    return (this.data.storage_locations || []).find(l => l.code === code);
+    return (this.data.storage_locations || []).find(l => l && String(l.code || '').trim() === String(code || '').trim());
   }
 
   // Central Deep Search Algorithm across Students, Documents, Books, Locations, Barcodes & QR
   globalSearch(query) {
-    if (!query || !query.trim()) return null;
-    const q = query.trim().toLowerCase();
+    if (!query || !String(query).trim()) return { query: '', students: [], documents: [], books: [], locations: [] };
+    const q = String(query).trim().toLowerCase();
 
     const matchedStudents = this.getStudents({ search: q });
     const matchedDocs = this.getDocuments({ search: q });
     const matchedBooks = this.getBooks({ search: q });
-    const matchedLocations = this.data.storage_locations.filter(l =>
-      l.code.toLowerCase().includes(q) ||
-      l.building.toLowerCase().includes(q) ||
-      l.room.toLowerCase().includes(q) ||
-      l.cabinet.toLowerCase().includes(q)
+    const matchedLocations = (this.data.storage_locations || []).filter(l =>
+      l && (
+        String(l.code || '').toLowerCase().includes(q) ||
+        String(l.building || '').toLowerCase().includes(q) ||
+        String(l.room || '').toLowerCase().includes(q) ||
+        String(l.cabinet || '').toLowerCase().includes(q) ||
+        String(l.shelf || '').toLowerCase().includes(q) ||
+        String(l.folder || '').toLowerCase().includes(q)
+      )
     );
 
     return {
@@ -879,8 +922,35 @@ class RelationalDatabase {
   }
 })();
 
-return this.fetchPromise;
-}
+    return this.fetchPromise;
+  }
+
+  startAutoPolling(intervalMs = 25000) {
+    if (this._pollingInterval) clearInterval(this._pollingInterval);
+    this._pollingInterval = setInterval(() => {
+      if (!this.saveInProgress && !this.isSyncing && !this.DB_STATE.fetching && !this.googleSyncDisabled) {
+        this.syncFromGoogleSheets().then(res => {
+          if (res && res.dataChanged && window.router && typeof window.router.handleRoute === 'function') {
+            console.log('[DB] Background poll detected changes, refreshing UI');
+            window.router.handleRoute();
+          }
+        }).catch(err => {});
+      }
+    }, intervalMs);
+
+    if (!this._visibilityListenerAttached) {
+      this._visibilityListenerAttached = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !this.googleSyncDisabled) {
+          this.syncFromGoogleSheets().then(res => {
+            if (res && res.dataChanged && window.router && typeof window.router.handleRoute === 'function') {
+              window.router.handleRoute();
+            }
+          }).catch(() => {});
+        }
+      });
+    }
+  }
 
 applySheetData(sheetData) {
   if (!sheetData || typeof sheetData !== 'object') return;
@@ -906,7 +976,7 @@ applySheetData(sheetData) {
     return str;
   };
 
-  // 1. Students
+  // 1. Students (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Students) && sheetData.Students.length > 1) {
     const rows = sheetData.Students.slice(1);
     const parsedStudents = rows.map((row, idx) => ({
@@ -923,31 +993,38 @@ applySheetData(sheetData) {
       book_number: String(row[8] || '').trim(),
       file_url: row.length >= 12 ? extractUrl(row[9]) : '',
       file_url_back: row.length >= 12 ? extractUrl(row[10]) : '',
-      status: String((row.length >= 12 ? row[11] : row[9]) || 'graduated').trim()
+      status: String((row.length >= 12 ? row[11] : row[9]) || 'graduated').trim(),
+      updated_at: String(row[10] || '')
     })).filter(s => s.student_id);
 
-    const uniqueStudents = [];
-    const seenStudentIds = new Set();
-    parsedStudents.forEach(s => {
+    const studentMap = new Map();
+    (this.data.students || []).forEach(s => {
       const sid = String(s.student_id).toLowerCase();
-      if (!seenStudentIds.has(sid) && !deletedStudents.includes(sid)) {
-        seenStudentIds.add(sid);
-        uniqueStudents.push(s);
+      if (!deletedStudents.includes(sid)) {
+        studentMap.set(sid, s);
       }
     });
 
-    this.data.students = uniqueStudents;
-  } else if (sheetData.Students) {
-    this.data.students = [];
+    parsedStudents.forEach(s => {
+      const sid = String(s.student_id).toLowerCase();
+      if (!deletedStudents.includes(sid)) {
+        const local = studentMap.get(sid);
+        if (!local || !local.updated_at || (s.updated_at && s.updated_at >= local.updated_at)) {
+          studentMap.set(sid, { ...local, ...s });
+        }
+      }
+    });
+
+    this.data.students = Array.from(studentMap.values());
   }
 
-  // 2. Documents
+  // 2. Documents (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Documents) && sheetData.Documents.length > 1) {
     const rows = sheetData.Documents.slice(1);
     const parsedDocs = rows.map((row, idx) => {
-      let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '';
+      let docCode = '', stdId = '', stdName = '', docTypeCode = 'ปพ.1', gradYear = '2565', setNo = '01', docNum = '001', status = 'stored', locationCode = '', fileName = '', rawDriveUrl = '', rawDriveUrlBack = '', updatedAt = '';
 
-      if (row.length >= 12) {
+      if (row.length >= 10) {
         docCode = String(row[0] || '').trim();
         stdId = String(row[1] || '').trim();
         stdName = String(row[2] || '').trim();
@@ -957,31 +1034,18 @@ applySheetData(sheetData) {
         docNum = String(row[6] || '001').trim();
         status = String(row[7] || 'stored').trim();
         locationCode = String(row[8] || '').trim();
-        fileName = String(row[9] || '').trim();
-        rawDriveUrl = String(row[10] || '').trim();
-        rawDriveUrlBack = String(row[11] || '').trim();
-      } else if (row.length >= 9) {
-        docCode = String(row[0] || '').trim();
-        stdId = String(row[1] || '').trim();
-        stdName = String(row[2] || '').trim();
-        docTypeCode = String(row[3] || 'ปพ.1').trim();
-        gradYear = String(row[4] || '2565').trim();
-        setNo = String(row[5] || '01').trim();
-        docNum = String(row[6] || '001').trim();
-        status = String(row[7] || 'stored').trim();
-        locationCode = String(row[8] || '').trim();
+        updatedAt = String(row[9] || '').trim();
       } else {
         docCode = String(row[0] || '').trim();
-        docTypeCode = String(row[1] || 'ปพ.1').trim();
-        gradYear = String(row[2] || '2565').trim();
-        setNo = String(row[3] || '01').trim();
-        docNum = String(row[4] || '001').trim();
-        status = String(row[5] || 'stored').trim();
-        locationCode = String(row[6] || '').trim();
+        stdId = String(row[1] || '').trim();
+        stdName = String(row[2] || '').trim();
+        docTypeCode = String(row[3] || 'ปพ.1').trim();
+        gradYear = String(row[4] || '2565').trim();
+        setNo = String(row[5] || '01').trim();
+        docNum = String(row[6] || '001').trim();
+        status = String(row[7] || 'stored').trim();
+        locationCode = String(row[8] || '').trim();
       }
-
-      const driveUrl = extractUrl(rawDriveUrl);
-      const driveUrlBack = extractUrl(rawDriveUrlBack);
 
       return this.sanitizeDocumentItem({
         id: idx + 1,
@@ -995,29 +1059,35 @@ applySheetData(sheetData) {
         status: status,
         location_code: locationCode,
         file_name: fileName || `ปพ_${gradYear}_${setNo}_${docNum}.pdf`,
-        file_url: driveUrl,
-        file_url_back: driveUrlBack,
+        file_url: extractUrl(rawDriveUrl),
+        file_url_back: extractUrl(rawDriveUrlBack),
         book_code: `BOOK-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}`,
-        file_size: driveUrl.includes('drive') ? 'Google Drive' : 'N/A'
+        updated_at: updatedAt
       });
     }).filter(d => d.doc_code || d.doc_number || d.student_id);
 
-    const uniqueDocs = [];
-    const seenDocCodes = new Set();
-    parsedDocs.forEach(d => {
+    const docMap = new Map();
+    (this.data.documents || []).forEach(d => {
       const dcode = String(d.doc_code).toLowerCase();
-      if (!seenDocCodes.has(dcode) && !deletedDocs.includes(dcode)) {
-        seenDocCodes.add(dcode);
-        uniqueDocs.push(d);
+      if (!deletedDocs.includes(dcode)) {
+        docMap.set(dcode, d);
       }
     });
 
-    this.data.documents = uniqueDocs;
-  } else if (sheetData.Documents) {
-    this.data.documents = [];
+    parsedDocs.forEach(d => {
+      const dcode = String(d.doc_code).toLowerCase();
+      if (!deletedDocs.includes(dcode)) {
+        const local = docMap.get(dcode);
+        if (!local || !local.updated_at || (d.updated_at && d.updated_at >= local.updated_at)) {
+          docMap.set(dcode, { ...local, ...d });
+        }
+      }
+    });
+
+    this.data.documents = Array.from(docMap.values());
   }
 
-  // 3. Books
+  // 3. Books (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Books) && sheetData.Books.length > 1) {
     const rows = sheetData.Books.slice(1);
     const parsedBooks = rows.map((row, idx) => {
@@ -1037,26 +1107,33 @@ applySheetData(sheetData) {
         end_no: eNo,
         item_count: calcCount,
         location_code: String(row[7] || '').trim(),
+        updated_at: String(row[8] || '').trim(),
         status: 'active'
       };
     }).filter(b => b.book_code);
 
-    const uniqueBooks = [];
-    const seenBookCodes = new Set();
-    parsedBooks.forEach(b => {
+    const bookMap = new Map();
+    (this.data.books || []).forEach(b => {
       const bcode = String(b.book_code).toLowerCase();
-      if (!seenBookCodes.has(bcode) && !deletedBooks.includes(bcode)) {
-        seenBookCodes.add(bcode);
-        uniqueBooks.push(b);
+      if (!deletedBooks.includes(bcode)) {
+        bookMap.set(bcode, b);
       }
     });
 
-    this.data.books = uniqueBooks;
-  } else if (sheetData.Books) {
-    this.data.books = [];
+    parsedBooks.forEach(b => {
+      const bcode = String(b.book_code).toLowerCase();
+      if (!deletedBooks.includes(bcode)) {
+        const local = bookMap.get(bcode);
+        if (!local || !local.updated_at || (b.updated_at && b.updated_at >= local.updated_at)) {
+          bookMap.set(bcode, { ...local, ...b });
+        }
+      }
+    });
+
+    this.data.books = Array.from(bookMap.values());
   }
 
-  // 4. Loans / Document Copy Requests
+  // 4. Loans / Document Copy Requests (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Loans) && sheetData.Loans.length > 1) {
     const rows = sheetData.Loans.slice(1);
     const parsedLoans = rows.map((row, idx) => {
@@ -1071,27 +1148,34 @@ applySheetData(sheetData) {
         loan_date: String(row[6] || '').trim(),
         return_due_date: String(row[7] || '').trim(),
         reason: String(row[8] || '').trim(),
-        status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending'
+        status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending',
+        updated_at: String(row[10] || '').trim()
       };
       return this.sanitizeLoanItem(item);
     }).filter(l => l.loan_code);
 
-    const uniqueLoans = [];
-    const seenLoanCodes = new Set();
-    parsedLoans.forEach(l => {
+    const loanMap = new Map();
+    (this.data.loans || []).forEach(l => {
       const lcode = String(l.loan_code).toLowerCase();
-      if (!seenLoanCodes.has(lcode) && !deletedLoans.includes(lcode)) {
-        seenLoanCodes.add(lcode);
-        uniqueLoans.push(l);
+      if (!deletedLoans.includes(lcode)) {
+        loanMap.set(lcode, l);
       }
     });
 
-    this.data.loans = uniqueLoans;
-  } else if (sheetData.Loans) {
-    this.data.loans = [];
+    parsedLoans.forEach(l => {
+      const lcode = String(l.loan_code).toLowerCase();
+      if (!deletedLoans.includes(lcode)) {
+        const local = loanMap.get(lcode);
+        if (!local || !local.updated_at || (l.updated_at && l.updated_at >= local.updated_at)) {
+          loanMap.set(lcode, { ...local, ...l });
+        }
+      }
+    });
+
+    this.data.loans = Array.from(loanMap.values());
   }
 
-  // 5. Storage Locations
+  // 5. Storage Locations (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Storage_Locations) && sheetData.Storage_Locations.length > 1) {
     const rows = sheetData.Storage_Locations.slice(1);
     const parsedLocs = rows.map((row, idx) => ({
@@ -1102,25 +1186,32 @@ applySheetData(sheetData) {
       cabinet: String(row[3] || '').trim(),
       shelf: String(row[4] || '').trim(),
       folder: String(row[5] || '').trim(),
-      description: String(row[6] || '').trim()
+      description: String(row[6] || '').trim(),
+      updated_at: String(row[7] || '').trim()
     })).filter(l => l.code);
 
-    const uniqueLocs = [];
-    const seenLocCodes = new Set();
-    parsedLocs.forEach(l => {
+    const locMap = new Map();
+    (this.data.storage_locations || []).forEach(l => {
       const lcode = String(l.code).toLowerCase();
-      if (!seenLocCodes.has(lcode) && !deletedLocs.includes(lcode)) {
-        seenLocCodes.add(lcode);
-        uniqueLocs.push(l);
+      if (!deletedLocs.includes(lcode)) {
+        locMap.set(lcode, l);
       }
     });
 
-    this.data.storage_locations = uniqueLocs;
-  } else if (sheetData.Storage_Locations) {
-    this.data.storage_locations = [];
+    parsedLocs.forEach(l => {
+      const lcode = String(l.code).toLowerCase();
+      if (!deletedLocs.includes(lcode)) {
+        const local = locMap.get(lcode);
+        if (!local || !local.updated_at || (l.updated_at && l.updated_at >= local.updated_at)) {
+          locMap.set(lcode, { ...local, ...l });
+        }
+      }
+    });
+
+    this.data.storage_locations = Array.from(locMap.values());
   }
 
-  // 6. Users
+  // 6. Users (Smart Non-Destructive Merge)
   if (Array.isArray(sheetData.Users) && sheetData.Users.length > 1) {
     const rows = sheetData.Users.slice(1);
     const parsedUsers = rows.map((row, idx) => ({
@@ -1133,20 +1224,29 @@ applySheetData(sheetData) {
       email: String(row[5] || '').trim(),
       status: 'active',
       created_at: String(row[6] || '').trim(),
-      password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim()
+      password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim(),
+      updated_at: String(row[8] || '').trim()
     })).filter(u => u.username);
 
-    const uniqueUsers = [];
-    const seenUsernames = new Set();
-    parsedUsers.forEach(u => {
+    const userMap = new Map();
+    (this.data.users || []).forEach(u => {
       const uname = String(u.username).toLowerCase();
-      if (!seenUsernames.has(uname) && !deletedUsers.includes(uname)) {
-        seenUsernames.add(uname);
-        uniqueUsers.push(u);
+      if (!deletedUsers.includes(uname)) {
+        userMap.set(uname, u);
       }
     });
 
-    this.data.users = uniqueUsers;
+    parsedUsers.forEach(u => {
+      const uname = String(u.username).toLowerCase();
+      if (!deletedUsers.includes(uname)) {
+        const local = userMap.get(uname);
+        if (!local || !local.updated_at || (u.updated_at && u.updated_at >= local.updated_at)) {
+          userMap.set(uname, { ...local, ...u });
+        }
+      }
+    });
+
+    this.data.users = Array.from(userMap.values());
   }
 
   // 7. Settings

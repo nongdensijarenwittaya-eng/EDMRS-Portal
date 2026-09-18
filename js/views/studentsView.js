@@ -49,9 +49,6 @@ const studentsView = {
           </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button id="scan-ocr-student-btn" class="btn btn-warning btn-sm">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> ⚡ สแกนอ่านไฟล์ ปพ. (6 รายการ)
-          </button>
           <button id="export-students-excel-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-file-excel text-success"></i> ส่งออก Excel
           </button>
@@ -154,8 +151,21 @@ const studentsView = {
         </div>
 
         <!-- Pagination Controls -->
-        <div class="pagination-container" style="padding: 1rem 1.25rem;">
-          <span>แสดง ${totalStudents ? startIndex + 1 : 0} ถึง ${Math.min(startIndex + this.pageSize, totalStudents)} จากทั้งหมด ${totalStudents} รายการ</span>
+        <div class="pagination-container" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>แสดง ${totalStudents ? startIndex + 1 : 0} ถึง ${Math.min(startIndex + this.pageSize, totalStudents)} จากทั้งหมด ${totalStudents} รายการ</span>
+            <div style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 1rem;">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">จำนวนต่อหน้า:</span>
+              <select id="student-page-size-select" class="form-control" style="width: auto; padding: 0.2rem 0.5rem; font-size: 0.85rem; height: auto;">
+                <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10 รายการ</option>
+                <option value="15" ${this.pageSize === 15 ? 'selected' : ''}>15 รายการ</option>
+                <option value="25" ${this.pageSize === 25 ? 'selected' : ''}>25 รายการ</option>
+                <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50 รายการ</option>
+                <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100 รายการ</option>
+                <option value="999999" ${this.pageSize >= 999999 ? 'selected' : ''}>🌐 ไม่จำกัด (แสดงทั้งหมด)</option>
+              </select>
+            </div>
+          </div>
           <div class="pagination-controls">
             <button class="page-btn" id="prev-page-btn" ${this.currentPage === 1 ? 'disabled' : ''}>
               <i class="fa-solid fa-chevron-left"></i>
@@ -175,6 +185,15 @@ const studentsView = {
     const filterYear = document.getElementById('student-filter-year');
     const filterGrade = document.getElementById('student-filter-grade');
     const resetBtn = document.getElementById('reset-student-filters-btn');
+    const pageSizeSelect = document.getElementById('student-page-size-select');
+
+    if (pageSizeSelect) {
+      pageSizeSelect.onchange = (e) => {
+        this.pageSize = parseInt(e.target.value, 10) || 10;
+        this.currentPage = 1;
+        this.refreshTable();
+      };
+    }
 
     if (searchInput) {
       searchInput.oninput = (e) => {
@@ -231,13 +250,6 @@ const studentsView = {
     const addBtn = document.getElementById('add-student-btn');
     if (addBtn) addBtn.onclick = () => this.openStudentModal();
 
-    const ocrBtn = document.getElementById('scan-ocr-student-btn');
-    if (ocrBtn) {
-      ocrBtn.onclick = () => {
-        if (window.documentsView) window.documentsView.openAddDocModal();
-      };
-    }
-
 
 
     // Edit & Delete Event Delegates
@@ -254,8 +266,8 @@ const studentsView = {
         const id = btn.getAttribute('data-id');
         const name = btn.getAttribute('data-name');
         window.utils.confirmDialog(
-          'ยืนยันการลบนักเรียน',
-          `คุณต้องการลบข้อมูลนักเรียน <b>${name} (${id})</b> หรือไม่? การลบนี้จะส่งผลต่อประวัติเอกสาร`,
+          'ยืนยันการลบนักเรียนและเอกสาร',
+          `คุณต้องการลบข้อมูลนักเรียน <b>${name} (${id})</b> หรือไม่? การลบนี้จะทำการลบเอกสาร ปพ. และคำขอสำเนาทั้งหมดที่ผูกกับนักเรียนรายนี้ออกจากระบบด้วย`,
           async () => {
             window.db.deleteStudent(id);
             window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
@@ -297,11 +309,25 @@ const studentsView = {
     }
   },
 
-  refreshTable() {
+  refreshTable(focusSearch = false) {
+    const searchEl = document.getElementById('student-search-input');
+    const cursorPos = searchEl ? searchEl.selectionStart : null;
+    const isFocused = searchEl && document.activeElement === searchEl;
+
     const main = document.getElementById('main-content');
     if (main) {
       main.innerHTML = this.render();
       this.initEvents();
+
+      if (isFocused || focusSearch) {
+        const newSearchEl = document.getElementById('student-search-input');
+        if (newSearchEl) {
+          newSearchEl.focus();
+          if (cursorPos !== null) {
+            newSearchEl.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      }
     }
   },
 
@@ -319,11 +345,15 @@ const studentsView = {
           </label>
           <select id="modal-book-code" class="form-control" style="border-color: var(--primary-300); font-weight: 500;">
             <option value="">-- เลือกทะเบียนเล่มเอกสารจากคลัง --</option>
-            ${books.map(b => `
-              <option value="${b.book_code}" data-year="${b.academic_year}" data-num="${b.book_number}" data-type="${b.doc_type_code}" ${(currentBookCode === b.book_code || (student && student.set_number === b.book_number)) ? 'selected' : ''}>
+            ${books.map(b => {
+              const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
+              const isSelected = (currentBookCode && (b.book_code === currentBookCode || norm(b.book_code) === norm(currentBookCode))) ||
+                (student && (student.set_number || student.book_number) && parseInt(String(student.set_number || student.book_number).replace(/\D/g, ''), 10) === parseInt(String(b.book_number).replace(/\D/g, ''), 10) && String(student.academic_year || '').trim() === String(b.academic_year || '').trim());
+              return `
+              <option value="${b.book_code}" data-year="${b.academic_year}" data-num="${b.book_number}" data-type="${b.doc_type_code}" ${isSelected ? 'selected' : ''}>
                 ${b.book_code} (${b.doc_type_code} - ปี ${b.academic_year} | เล่มที่/ชุดที่ ${b.book_number})
-              </option>
-            `).join('')}
+              </option>`;
+            }).join('')}
             <option value="CUSTOM" ${!currentBookCode && student ? 'selected' : ''}>+ กรอกชุดที่ / เล่มที่ เอง...</option>
           </select>
           <div id="book-link-info" style="margin-top: 6px; font-size: 0.8rem; color: var(--primary-800);">
@@ -412,21 +442,24 @@ const studentsView = {
             return false;
           }
 
-          let matchedBook = books.find(b => b.book_code === bookCodeSelect);
+          const norm = (str) => String(str || '').toLowerCase().replace(/[\.\_\-\s]/g, '').replace(/uw/g, 'ปพ').trim();
+          let matchedBook = books.find(b => b.book_code === bookCodeSelect || norm(b.book_code) === norm(bookCodeSelect));
           if (!matchedBook && setNumber && academicYear) {
-            const cleanSet = String(setNumber).replace(/\D/g, '');
-            matchedBook = books.find(b =>
-              String(b.book_number || '').replace(/\D/g, '') === cleanSet &&
-              String(b.academic_year || '').trim() === String(academicYear).trim()
-            );
+            const setNumInt = parseInt(String(setNumber).replace(/\D/g, ''), 10);
+            const yearStr = String(academicYear).trim();
+            matchedBook = books.find(b => {
+              const bSetInt = parseInt(String(b.book_number || '').replace(/\D/g, ''), 10);
+              const bYearStr = String(b.academic_year || '').trim();
+              return !isNaN(setNumInt) && !isNaN(bSetInt) && bSetInt === setNumInt && bYearStr === yearStr;
+            });
           }
 
           const docTypeCode = matchedBook ? matchedBook.doc_type_code : 'ปพ.1';
-          const cleanType = docTypeCode.replace(/[\.\s]/g, '');
-          const finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${cleanType}-${academicYear}-${String(setNumber).padStart(2, '0')}`;
+          const cleanType = docTypeCode.replace(/[\.\_\-\s]/g, '');
+          let finalBookCode = matchedBook ? matchedBook.book_code : `BOOK-${cleanType}-${academicYear}-${String(setNumber).padStart(2, '0')}`;
 
           if (!window.db.data.books) window.db.data.books = [];
-          let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode);
+          let targetBookObj = window.db.data.books.find(b => b.book_code === finalBookCode || norm(b.book_code) === norm(finalBookCode));
           if (!targetBookObj) {
             targetBookObj = {
               id: window.db.data.books.length + 1,
@@ -440,6 +473,8 @@ const studentsView = {
               location_code: 'LOC-A01-01-01'
             };
             window.db.data.books.unshift(targetBookObj);
+          } else {
+            finalBookCode = targetBookObj.book_code;
           }
 
           if (isEdit) {
@@ -487,8 +522,9 @@ const studentsView = {
           }
 
           // Relational Linkage: Ensure a corresponding document entry exists/is updated in window.db.data.documents linked to this book!
-          const docCode = `DOC-${cleanType}-${studentId}`;
+          const docCode = `DOC-${cleanType.toUpperCase()}-${studentId}`;
           const docIdx = (window.db.data.documents || []).findIndex(d => d.student_id === studentId || d.doc_code === docCode);
+          const existingDocFile = docIdx !== -1 ? window.db.data.documents[docIdx].file_name : '';
           const docObj = {
             id: docIdx !== -1 ? window.db.data.documents[docIdx].id : (window.db.data.documents || []).length + 1,
             doc_code: docCode,
@@ -496,14 +532,14 @@ const studentsView = {
             student_name: `${prefix}${firstName} ${lastName}`,
             doc_type_code: docTypeCode,
             academic_year: academicYear,
-            book_number: setNumber,
+            book_number: targetBookObj ? targetBookObj.book_number : setNumber,
             doc_number: docNumber,
             book_code: finalBookCode,
             status: 'stored',
             location_code: targetBookObj ? targetBookObj.location_code : 'LOC-A01-01-01',
-            file_name: `${cleanType}_${studentId}.pdf`,
-            file_url: '',
-            file_url_back: '',
+            file_name: existingDocFile || `${cleanType}_${studentId}.pdf`,
+            file_url: (docIdx !== -1 && window.db.data.documents[docIdx].file_url) || '',
+            file_url_back: (docIdx !== -1 && window.db.data.documents[docIdx].file_url_back) || '',
             updated_at: new Date().toISOString()
           };
 
@@ -514,10 +550,9 @@ const studentsView = {
             window.db.data.documents.unshift(docObj);
           }
 
-          if (targetBookObj) {
-            const count = window.db.getDocuments({ book_code: targetBookObj.book_code }).length;
-            targetBookObj.item_count = count;
-          }
+          (window.db.data.books || []).forEach(b => {
+            b.item_count = window.db.getDocuments({ book_code: b.book_code }).length;
+          });
 
           window.db.save();
           window.utils.showToast(`บันทึกและเชื่อมโยงนักเรียนกับเล่มเอกสาร ${finalBookCode} เรียบร้อยแล้ว`, 'success');

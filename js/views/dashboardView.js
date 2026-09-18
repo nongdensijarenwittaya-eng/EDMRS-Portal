@@ -40,9 +40,6 @@ const dashboardView = {
           </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-          <button id="dash-fetch-sheets-btn" class="btn btn-warning btn-sm" style="font-weight: 600;">
-            <i class="fa-solid fa-cloud-arrow-down"></i> ⚡ ดึงข้อมูลจาก Google Sheets
-          </button>
           <button id="refresh-dashboard-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-rotate"></i> รีเฟรชข้อมูล
           </button>
@@ -243,15 +240,6 @@ const dashboardView = {
     const searchBtn = document.getElementById('dashboard-search-btn');
     const resultsContainer = document.getElementById('central-search-results-container');
     const refreshBtn = document.getElementById('refresh-dashboard-btn');
-    const dashFetchBtn = document.getElementById('dash-fetch-sheets-btn');
-
-    if (dashFetchBtn) {
-      dashFetchBtn.onclick = () => {
-        if (typeof window.autoFetchFromGoogleSheets === 'function') {
-          window.autoFetchFromGoogleSheets(false);
-        }
-      };
-    }
 
     if (refreshBtn) {
       refreshBtn.onclick = () => {
@@ -274,6 +262,7 @@ const dashboardView = {
 
     if (searchBtn) searchBtn.onclick = performSearch;
     if (searchInput) {
+      searchInput.oninput = performSearch;
       searchInput.onkeyup = (e) => {
         if (e.key === 'Enter') performSearch();
       };
