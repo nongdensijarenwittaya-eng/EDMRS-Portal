@@ -755,6 +755,61 @@ class RelationalDatabase {
   // Explicit CRUD Methods with Single-Flight Sync
   // ==========================================
 
+  /**
+   * Helper: Automatically creates or updates a linked Document record whenever a Student is added/edited
+   */
+  ensureStudentDocumentLinked(studentData) {
+    if (!studentData || !studentData.student_id) return;
+    const sid = String(studentData.student_id).trim();
+    const fullName = `${studentData.prefix || ''}${studentData.first_name || ''} ${studentData.last_name || ''}`.trim();
+    const setNum = String(studentData.set_number || studentData.book_number || '01').trim();
+    const docNum = String(studentData.doc_number || '001').trim();
+    const year = String(studentData.academic_year || '2569').trim();
+
+    let bookCode = String(studentData.book_code || '').trim();
+    let docTypeCode = 'ปพ.1';
+    let locationCode = 'LOC-A01-01-01';
+
+    if (bookCode && this.data.books) {
+      const bookObj = this.data.books.find(b => b.book_code === bookCode);
+      if (bookObj) {
+        docTypeCode = bookObj.doc_type_code || 'ปพ.1';
+        locationCode = bookObj.location_code || 'LOC-A01-01-01';
+      }
+    } else {
+      const cleanType = docTypeCode.replace(/[\.\_\-\s]/g, '');
+      bookCode = `BOOK-${cleanType}-${year}-${String(setNum).padStart(2, '0')}`;
+    }
+
+    const cleanType = docTypeCode.replace(/[\.\_\-\s]/g, '').toUpperCase();
+    const docCode = `DOC-${cleanType}-${sid}`;
+
+    if (!this.data.documents) this.data.documents = [];
+
+    const existingIdx = this.data.documents.findIndex(d => String(d.student_id).trim() === sid || String(d.doc_code).trim() === docCode);
+
+    const updatedDoc = {
+      id: existingIdx !== -1 ? this.data.documents[existingIdx].id : (this.data.documents.length + 1),
+      doc_code: docCode,
+      student_id: sid,
+      student_name: fullName,
+      doc_type_code: docTypeCode,
+      academic_year: year,
+      book_number: setNum,
+      doc_number: docNum,
+      book_code: bookCode,
+      status: 'stored',
+      location_code: locationCode,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existingIdx !== -1) {
+      this.data.documents[existingIdx] = { ...this.data.documents[existingIdx], ...updatedDoc };
+    } else {
+      this.data.documents.unshift(updatedDoc);
+    }
+  }
+
   // --- Student CRUD ---
   async addStudent(studentData) {
     if (!studentData.student_id) throw new Error('ต้องระบุรหัสนักเรียน (student_id)');
@@ -766,7 +821,11 @@ class RelationalDatabase {
     };
     if (!this.data.students) this.data.students = [];
     this.data.students.unshift(newStudent);
-    this.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียน ${studentData.first_name} ${studentData.last_name} (${studentData.student_id})`);
+
+    // Auto-link document entry in Documents table
+    this.ensureStudentDocumentLinked(newStudent);
+
+    this.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียน ${studentData.first_name} ${studentData.last_name} (${studentData.student_id}) และสร้างทะเบียนเอกสาร ปพ.`);
     this.saveLocal();
     return await this.syncToGoogleSheets(null, 'create');
   }
@@ -781,7 +840,11 @@ class RelationalDatabase {
       ...studentData,
       updated_at: new Date().toISOString()
     };
-    this.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${studentId}`);
+
+    // Auto-link/update document entry in Documents table
+    this.ensureStudentDocumentLinked(this.data.students[idx]);
+
+    this.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${studentId} และอัปเดตทะเบียนเอกสาร ปพ.`);
     this.saveLocal();
     return await this.syncToGoogleSheets(null, 'update');
   }
@@ -791,11 +854,24 @@ class RelationalDatabase {
     const sidStr = String(studentId).trim();
     this.data.students = (this.data.students || []).filter(s => String(s.student_id).trim() !== sidStr);
     
+    // Auto-cleanup corresponding document entries
+    if (this.data.documents) {
+      const deletedDocs = this.data.documents.filter(d => String(d.student_id).trim() === sidStr);
+      this.cleanupDeletedKeys();
+      if (!this.data.deleted_keys.documents) this.data.deleted_keys.documents = [];
+      deletedDocs.forEach(d => {
+        if (d.doc_code && !this.data.deleted_keys.documents.includes(String(d.doc_code).trim())) {
+          this.data.deleted_keys.documents.push(String(d.doc_code).trim());
+        }
+      });
+      this.data.documents = this.data.documents.filter(d => String(d.student_id).trim() !== sidStr);
+    }
+
     this.cleanupDeletedKeys();
     if (!this.data.deleted_keys.students) this.data.deleted_keys.students = [];
     this.data.deleted_keys.students.push(sidStr);
 
-    this.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูล', `ลบนักเรียนรหัส ${studentId}`);
+    this.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูล', `ลบนักเรียนรหัส ${studentId} และเอกสาร ปพ. ที่เชื่อมโยง`);
     this.saveLocal();
     return await this.syncToGoogleSheets(null, 'delete');
   }

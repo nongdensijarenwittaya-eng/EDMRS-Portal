@@ -5,7 +5,7 @@
 
 const CONFIG = {
   // Primary Central Web App URL (Google Apps Script)
-  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec',
+  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwjmgWDRgdqfwW1D5Lv9qaILsz6vVsu1yHz917Quk-dfBcRWX3kEyq8NSDKRXVSkM6H/exec',
   
   // Application Details
   APP_NAME_TH: 'ระบบจัดเก็บเอกสาร ปพ.',
