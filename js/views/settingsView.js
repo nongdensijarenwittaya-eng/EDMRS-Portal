@@ -8,7 +8,7 @@ const settingsView = {
     const s = (window.db && window.db.data && window.db.data.settings) ? window.db.data.settings : {};
     const defaultLogo = 'assets/logo.png';
     const fallbackSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%231e3a8a'/%3E%3Ctext x='50' y='65' font-size='45' fill='white' text-anchor='middle' font-weight='bold' font-family='sans-serif'%3Eปพ.%3C/text%3E%3C/svg%3E";
-    const webAppUrl = s.sheets_url || (window.CONFIG ? window.CONFIG.GOOGLE_APPS_SCRIPT_URL : '');
+    const webAppUrl = (window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec');
 
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -17,7 +17,7 @@ const settingsView = {
             <i class="fa-solid fa-gears text-primary"></i> ตั้งค่าระบบ & เชื่อมต่อ Google Sheets
           </h2>
           <p style="font-size: 0.88rem; color: var(--text-muted);">
-            ปรับแต่งชื่อสถานศึกษา โลโก้ และตรวจสอบ Web App URL สำหรับการเชื่อมต่อฐานข้อมูล Google Sheets
+            ปรับแต่งชื่อสถานศึกษา โลโก้ และตรวจสอบสถานะ Web App URL สำหรับการเชื่อมต่อฐานข้อมูล Google Sheets
           </p>
         </div>
       </div>
@@ -75,16 +75,18 @@ const settingsView = {
       <!-- Settings Tab 2: Google Sheets Connection -->
       <div class="card" style="border-top: 4px solid #0284c7; margin-bottom: 1.5rem;">
         <div class="card-header">
-          <h3 class="card-title"><i class="fa-solid fa-table text-primary"></i> ตั้งค่าการเชื่อมต่อ Google Sheets Web App</h3>
+          <h3 class="card-title"><i class="fa-solid fa-table text-primary"></i> สถานะการเชื่อมต่อ Google Sheets Web App</h3>
         </div>
 
-        <form id="settings-cloud-form">
+        <form id="settings-cloud-form" onsubmit="return false;">
           <div class="form-row">
             <div class="form-group" style="flex: 1;">
-              <label class="form-label font-weight-bold">Google Sheets Web App URL (Production Exec URL)</label>
-              <input type="text" id="setting-sheets-url" class="form-control" value="${webAppUrl}" placeholder="https://script.google.com/macros/s/.../exec">
-              <div class="form-text" style="color: #64748b;">
-                <i class="fa-solid fa-link"></i> Web App URL สำหรับอ่านและบันทึกข้อมูลกับ Google Sheets (ต้องลงท้ายด้วย <code>/exec</code> เท่านั้น)
+              <label class="form-label font-weight-bold">Google Sheets Web App URL (ฝังถาวรในระบบ)</label>
+              <div style="background: #f8fafc; padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-family: monospace; font-size: 0.88rem; word-break: break-all; color: var(--primary-900);">
+                <i class="fa-solid fa-lock text-success" style="margin-right: 6px;"></i> ${webAppUrl}
+              </div>
+              <div class="form-text" style="color: #64748b; margin-top: 6px;">
+                <i class="fa-solid fa-shield-halved text-success"></i> Web App URL ถูกฝังไว้ในซอร์สโค้ดของระบบแล้ว ป้องกันการแก้ไขหลุดหรือตั้งค่าผิดพลาดโดยไม่ตั้งใจ
               </div>
             </div>
           </div>
@@ -95,9 +97,6 @@ const settingsView = {
             </button>
             <button type="button" id="sync-from-sheets-btn" class="btn btn-warning" style="font-weight: 600;">
               <i class="fa-solid fa-arrows-rotate"></i> ⚡ รีเฟรชดึงข้อมูลจาก Google Sheets ทันที
-            </button>
-            <button type="button" id="save-cloud-config-btn" class="btn btn-primary">
-              <i class="fa-solid fa-floppy-disk"></i> บันทึก Web App URL
             </button>
           </div>
         </form>
@@ -150,13 +149,7 @@ const settingsView = {
     const testCloudBtn = document.getElementById('test-cloud-conn-btn');
     if (testCloudBtn) {
       testCloudBtn.onclick = async () => {
-        const url = document.getElementById('setting-sheets-url').value.trim();
-        if (!url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(url))) {
-          if (window.utils && window.utils.showToast) {
-            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
-          }
-          return;
-        }
+        const url = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
         if (window.utils && window.utils.showToast) {
           window.utils.showToast('กำลังทดสอบเชื่อมต่อ Google Apps Script Web App...', 'info');
         }
@@ -194,45 +187,6 @@ const settingsView = {
         } finally {
           syncFromBtn.disabled = false;
           syncFromBtn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> ⚡ รีเฟรชดึงข้อมูลจาก Google Sheets ทันที';
-        }
-      };
-    }
-
-    const saveCloudBtn = document.getElementById('save-cloud-config-btn');
-    if (saveCloudBtn) {
-      saveCloudBtn.onclick = async () => {
-        const sheetsUrl = document.getElementById('setting-sheets-url').value.trim();
-        if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
-          if (window.utils && window.utils.showToast) {
-            window.utils.showToast('URL Google Apps Script Web App ไม่ถูกต้อง กรุณาตรวจสอบ URL ที่ลงท้ายด้วย /exec', 'danger', 5000);
-          }
-          return;
-        }
-
-        saveCloudBtn.disabled = true;
-        saveCloudBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
-        try {
-          if (window.CONFIG) {
-            window.CONFIG.GOOGLE_APPS_SCRIPT_URL = sheetsUrl;
-          }
-          if (!window.db.data.settings) window.db.data.settings = {};
-          window.db.data.settings.sheets_url = sheetsUrl;
-          window.db.addAuditLog('ตั้งค่าระบบ', 'แก้ไข Web App URL', 'อัปเดตการตั้งค่า Google Sheets Web App URL');
-          window.db.save();
-
-          const connResult = await window.db.testGoogleSheetsConnection(sheetsUrl);
-          if (connResult.success) {
-            if (window.utils && window.utils.showToast) {
-              window.utils.showToast('บันทึก Web App URL และเชื่อมต่อ Google Sheets สำเร็จ!', 'success', 5000);
-            }
-          } else {
-            if (window.utils && window.utils.showToast) {
-              window.utils.showToast(`บันทึกการตั้งค่าแล้ว แต่พบปัญหาการเชื่อมต่อ: ${connResult.message}`, 'warning', 8000);
-            }
-          }
-        } finally {
-          saveCloudBtn.disabled = false;
-          saveCloudBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> บันทึก Web App URL';
         }
       };
     }

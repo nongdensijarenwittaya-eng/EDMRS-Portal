@@ -6,6 +6,14 @@
 const loansView = {
   currentFilter: 'all',
 
+  refreshPage() {
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.innerHTML = this.render();
+      this.initEvents();
+    }
+  },
+
   render() {
     const loans = window.db.data.loans || [];
     const canManage = window.authSystem.hasPermission('manage_loans');
@@ -41,6 +49,9 @@ const loansView = {
         </div>
 
         <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+          <button id="batch-delete-loans-btn" class="btn btn-danger btn-sm" style="display: none; font-size: 0.82rem; padding: 0.4rem 0.75rem;">
+            <i class="fa-solid fa-trash-can"></i> ลบที่เลือก (<span id="selected-loan-count">0</span>)
+          </button>
           <button id="sync-loans-sheets-btn" class="btn btn-success btn-sm" style="font-weight: 600; font-size: 0.82rem; padding: 0.4rem 0.75rem;">
             <i class="fa-solid fa-table"></i> ซิงก์ Sheets
           </button>
@@ -116,6 +127,7 @@ const loansView = {
           <table class="data-table" id="loans-table" style="width: 100%;">
             <thead>
               <tr>
+                <th style="width: 36px; text-align: center;"><input type="checkbox" id="select-all-loans-cb" style="cursor: pointer;"></th>
                 <th>เลขที่คำขอ</th>
                 <th>นักเรียนเจ้าของเอกสาร</th>
                 <th>ประเภท ปพ.</th>
@@ -129,6 +141,7 @@ const loansView = {
             <tbody>
               ${filteredLoans.length ? filteredLoans.map(l => `
                 <tr class="loan-row">
+                  <td style="text-align: center;"><input type="checkbox" class="loan-row-cb" value="${l.loan_code}" style="cursor: pointer;"></td>
                   <td>
                     <code style="font-weight: 700; font-size: 0.85rem; color: var(--primary-800);">${l.loan_code ? l.loan_code.replace('LN-', 'REQ-') : ''}</code>
                   </td>
@@ -279,24 +292,63 @@ const loansView = {
           'ยืนยันการลบรายการคำขอ',
           `คุณต้องการลบประวัติคำขอสำเนา <b>${displayCode}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.deleteLoan(code, id);
-            window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
             try {
-              await window.db.syncToGoogleSheets();
-              window.utils.showToast('ลบรายการคำขอและซิงก์ Google Sheets เรียบร้อยแล้ว', 'success');
+              await window.db.deleteLoan(code, id);
+              window.utils.showToast('ลบรายการคำขอเรียบร้อยแล้ว', 'success');
+              this.refreshPage();
             } catch (err) {
-              console.warn('Sync on delete loan:', err);
-              window.utils.showToast('ลบข้อมูลในเครื่องเรียบร้อยแล้ว', 'warning');
-            }
-            const mainContent = document.getElementById('main-content');
-            if (mainContent) {
-              mainContent.innerHTML = this.render();
-              this.initEvents();
+              window.utils.showToast(`เกิดข้อผิดพลาดในการลบ: ${err.message}`, 'danger');
             }
           }
         );
       };
     });
+
+    const selectAllCb = document.getElementById('select-all-loans-cb');
+    const rowCbs = document.querySelectorAll('.loan-row-cb');
+    const batchDelBtn = document.getElementById('batch-delete-loans-btn');
+    const selectedCountSpan = document.getElementById('selected-loan-count');
+
+    const updateBatchBtn = () => {
+      const selected = Array.from(document.querySelectorAll('.loan-row-cb:checked')).map(cb => cb.value);
+      if (batchDelBtn && selectedCountSpan) {
+        selectedCountSpan.textContent = selected.length;
+        batchDelBtn.style.display = selected.length > 0 ? 'inline-flex' : 'none';
+      }
+    };
+
+    if (selectAllCb) {
+      selectAllCb.onchange = () => {
+        rowCbs.forEach(cb => cb.checked = selectAllCb.checked);
+        updateBatchBtn();
+      };
+    }
+
+    rowCbs.forEach(cb => cb.onchange = updateBatchBtn);
+
+    if (batchDelBtn) {
+      batchDelBtn.onclick = () => {
+        const selectedCodes = Array.from(document.querySelectorAll('.loan-row-cb:checked')).map(cb => cb.value);
+        if (selectedCodes.length === 0) return;
+
+        window.utils.confirmDialog(
+          'ยืนยันการลบคำขอกลุ่ม',
+          `คุณต้องการลบรายการคำขอที่เลือกทั้งหมด <b>${selectedCodes.length} รายการ</b> ใช่หรือไม่?`,
+          async () => {
+            batchDelBtn.disabled = true;
+            batchDelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังลบ...';
+            try {
+              await window.db.deleteLoansBatch(selectedCodes);
+              window.utils.showToast(`ลบรายการคำขอ ${selectedCodes.length} รายการ เรียบร้อยแล้ว`, 'success');
+              this.refreshPage();
+            } catch (err) {
+              window.utils.showToast(`เกิดข้อผิดพลาดในการลบกลุ่ม: ${err.message}`, 'danger');
+              batchDelBtn.disabled = false;
+            }
+          }
+        );
+      };
+    }
 
     document.querySelectorAll('.return-doc-btn').forEach(btn => {
       btn.onclick = () => {
@@ -305,20 +357,23 @@ const loansView = {
         window.utils.confirmDialog(
           'ยืนยันการส่งมอบสำเนาเอกสาร',
           'ต้องการบันทึกว่าได้จัดพิมพ์และส่งมอบฉบับสำเนา/ฉบับจริงให้ผู้ขอเรียบร้อยแล้วหรือไม่?',
-          () => {
+          async () => {
             const loan = window.db.data.loans.find(l => l.id == loanId);
             if (loan) {
-              loan.status = 'returned';
-              loan.return_date = new Date().toISOString().slice(0, 10);
-              loan.receiver_name = window.authSystem.getCurrentUser() ? window.authSystem.getCurrentUser().first_name : 'เจ้าหน้าที่';
+              const reqCodeDisplay = loan.loan_code ? loan.loan_code.replace('LN-', 'REQ-') : '';
+              try {
+                await window.db.updateLoan(loan.loan_code, {
+                  status: 'returned',
+                  return_date: new Date().toISOString().slice(0, 10),
+                  receiver_name: window.authSystem.getCurrentUser() ? window.authSystem.getCurrentUser().first_name : 'เจ้าหน้าที่'
+                });
+                window.db.addAuditLog('คำขอสำเนาเอกสาร', 'ส่งมอบเอกสาร', `อนุมัติและส่งมอบสำเนาเอกสารคำขอ ${reqCodeDisplay} เรียบร้อยแล้ว`);
+                window.utils.showToast('บันทึกการส่งมอบสำเนาเอกสารสำเร็จ', 'success');
+                this.refreshPage();
+              } catch (err) {
+                window.utils.showToast(`เกิดข้อผิดพลาด: ${err.message}`, 'danger');
+              }
             }
-
-            const reqCodeDisplay = loan && loan.loan_code ? loan.loan_code.replace('LN-', 'REQ-') : '';
-            window.db.addAuditLog('คำขอสำเนาเอกสาร', 'ส่งมอบเอกสาร', `อนุมัติและส่งมอบสำเนาเอกสารคำขอ ${reqCodeDisplay} เรียบร้อยแล้ว`);
-            window.db.save();
-            window.db.syncToGoogleSheets().catch(err => console.warn('Sync on deliver copy:', err));
-            window.utils.showToast('บันทึกการส่งมอบสำเนาเอกสารสำเร็จ', 'success');
-            window.location.reload();
           }
         );
       };
@@ -388,7 +443,7 @@ const loansView = {
         {
           text: isEdit ? 'บันทึกการแก้ไข' : 'บันทึกคำขอสำเนาเอกสาร',
           class: 'btn btn-primary',
-          onClick: () => {
+          onClick: async () => {
             const borrower = document.getElementById('modal-loan-borrower').value.trim();
             const dept = document.getElementById('modal-loan-dept').value.trim();
             const loanDate = document.getElementById('modal-loan-date').value;
@@ -401,57 +456,65 @@ const loansView = {
             }
 
             if (isEdit) {
-              loanToEdit.borrower_name = borrower;
-              loanToEdit.borrower_dept = dept;
-              loanToEdit.loan_date = loanDate;
-              loanToEdit.return_due_date = dueDate;
-              loanToEdit.reason = reason;
-              loanToEdit.updated_at = new Date().toISOString();
-              window.db.addAuditLog('คำขอสำเนาเอกสาร', 'แก้ไขคำขอ', `แก้ไขข้อมูลคำขอ ${loanToEdit.loan_code ? loanToEdit.loan_code.replace('LN-', 'REQ-') : ''}`);
-              window.db.save();
-              window.db.syncToGoogleSheets().catch(err => console.warn('Sync loans:', err));
-              window.utils.showToast('แก้ไขข้อมูลคำขอสำเนาเรียบร้อยแล้ว', 'success');
-              window.location.reload();
+              try {
+                await window.db.updateLoan(loanToEdit.loan_code, {
+                  borrower_name: borrower,
+                  borrower_dept: dept,
+                  loan_date: loanDate,
+                  return_due_date: dueDate,
+                  reason: reason
+                });
+                window.utils.showToast('แก้ไขข้อมูลคำขอสำเนาเรียบร้อยแล้ว', 'success');
+                this.refreshPage();
+              } catch (err) {
+                window.utils.showToast(`เกิดข้อผิดพลาด: ${err.message}`, 'danger');
+                return false;
+              }
               return;
             }
 
             const docSelect = document.getElementById('modal-loan-doc');
             const docId = docSelect ? docSelect.value : '';
-            const docObj = window.db.data.documents.find(d => d.id == docId);
+            const searchVal = (document.getElementById('modal-loan-doc-search')?.value || '').trim().toLowerCase();
+
+            let docObj = docs.find(d => String(d.id) === String(docId) || String(d.doc_code).toLowerCase() === String(docId).toLowerCase());
+            if (!docObj && searchVal) {
+              docObj = docs.find(d => 
+                (d.student_name || '').toLowerCase().includes(searchVal) ||
+                (d.doc_code || '').toLowerCase().includes(searchVal) ||
+                (d.student_id || '').toLowerCase().includes(searchVal)
+              );
+            }
+
             if (!docObj) {
               window.utils.showToast('กรุณาเลือกเอกสาร ปพ. / นักเรียนที่ต้องการขอสำเนา', 'warning');
               return false;
             }
 
-            const reqNum = String(window.db.data.loans.length + 1).padStart(3, '0');
+            const reqNum = String((window.db.data.loans || []).length + 1).padStart(3, '0');
             const loanCode = `REQ-${new Date().getFullYear()}-${reqNum}`;
-            const cleanDoc = window.db.sanitizeDocumentItem(docObj);
 
-            const newLoan = window.db.sanitizeLoanItem({
-              id: window.db.data.loans.length + 1,
+            const loanData = {
               loan_code: loanCode,
-              doc_id: cleanDoc.id,
-              student_id: cleanDoc.student_id,
-              student_name: cleanDoc.student_name,
-              doc_type_code: cleanDoc.doc_type_code || 'ปพ.1',
-              doc_number: cleanDoc.doc_number,
+              student_id: docObj.student_id,
+              student_name: docObj.student_name,
+              doc_type_code: docObj.doc_type_code || 'ปพ.1',
               borrower_name: borrower,
               borrower_dept: dept,
               loan_date: loanDate,
-              loan_time: new Date().toLocaleTimeString('th-TH').slice(0, 5),
-              reason: reason,
               return_due_date: dueDate,
-              status: 'pending',
-              updated_at: new Date().toISOString()
-            });
+              reason: reason,
+              status: 'pending'
+            };
 
-            window.db.data.loans.unshift(newLoan);
-
-            window.db.addAuditLog('คำขอสำเนาเอกสาร', 'เพิ่มคำขอสำเนา', `บันทึกคำขอสำเนาเอกสาร ${docObj.doc_code} โดย ${borrower}`);
-            window.db.save();
-            window.db.syncToGoogleSheets().catch(err => console.warn('Sync loans:', err));
-            window.utils.showToast(`บันทึกคำขอสำเนาเอกสาร ${docObj.doc_code} เรียบร้อยแล้ว`, 'success');
-            window.location.reload();
+            try {
+              await window.db.addLoan(loanData);
+              window.utils.showToast(`บันทึกคำขอสำเนาเอกสาร ${docObj.doc_code || loanCode} เรียบร้อยแล้ว`, 'success');
+              this.refreshPage();
+            } catch (err) {
+              window.utils.showToast(`เกิดข้อผิดพลาดในการบันทึก: ${err.message}`, 'danger');
+              return false;
+            }
           }
         }
       ]

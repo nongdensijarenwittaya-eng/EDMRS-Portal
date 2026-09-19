@@ -52,8 +52,34 @@ const utils = {
       const button = document.createElement('button');
       button.className = btnConfig.class || 'btn btn-secondary';
       button.innerHTML = btnConfig.text;
-      button.onclick = (e) => {
-        if (btnConfig.onClick) btnConfig.onClick(e);
+      button.onclick = async (e) => {
+        if (button.disabled || button.getAttribute('data-submitting') === 'true') return;
+
+        const isPrimary = btnConfig.class && (btnConfig.class.includes('btn-primary') || btnConfig.class.includes('btn-success'));
+        const originalHtml = button.innerHTML;
+
+        if (btnConfig.onClick) {
+          button.disabled = true;
+          button.setAttribute('data-submitting', 'true');
+          if (isPrimary) {
+            button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
+          }
+
+          try {
+            const res = await btnConfig.onClick(e);
+            if (res === false) {
+              button.disabled = false;
+              button.removeAttribute('data-submitting');
+              button.innerHTML = originalHtml;
+              return;
+            }
+          } catch (err) {
+            button.disabled = false;
+            button.removeAttribute('data-submitting');
+            button.innerHTML = originalHtml;
+            throw err;
+          }
+        }
         if (btnConfig.closeOnClick !== false) utils.closeModal();
       };
       footerEl.appendChild(button);

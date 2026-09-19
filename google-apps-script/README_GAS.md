@@ -16,7 +16,7 @@
 2. ลบโค้ดเดิมใน `Code.gs` ออกทั้งหมด
 
 ### ขั้นตอนที่ 3: วางโค้ด `Code.gs`
-1. เปิดไฟล์ [`google-apps-script/Code.gs`](file:///d:/SMOIS/student-club-web/ระบบจัดเก็บข้อมูลใบปพ/google-apps-script/Code.gs) ในโปรเจกต์นี้
+1. เปิดไฟล์ [`google-apps-script/Code.gs`](Code.gs) ในโปรเจกต์นี้
 2. คัดลอกโค้ดทั้งหมด ไปวางในช่อง `Code.gs` บน Google Apps Script Editor
 3. กดปุ่มบันทึก 💾 (Save)
 
@@ -30,7 +30,7 @@
 4. กดปุ่ม **Deploy (ทำให้ใช้งานได้)** และกดยืนยันสิทธิ์การเข้าถึง (Authorize Access)
 
 ### ขั้นตอนที่ 5: นำ Web App URL มาใส่ในระบบ EDMRS
-1. คัดลอก **Web App URL** ที่ได้ (`https://script.google.com/macros/s/AKfycbwjmgWDRgdqfwW1D5Lv9qaILsz6vVsu1yHz917Quk-dfBcRWX3kEyq8NSDKRXVSkM6H/exec`)
+1. คัดลอก **Web App URL** ที่ได้ (`https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec`)
 2. เปิดระบบ EDMRS ไปที่เมนู **"ตั้งค่าระบบ"** → หัวข้อ **"ตั้งค่าการเชื่อมต่อ Google Sheets"**
 3. วาง Web App URL และเปิดใช้งานซิงก์อัตโนมัติ
 

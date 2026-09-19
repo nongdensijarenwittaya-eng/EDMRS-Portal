@@ -23,6 +23,9 @@ const booksView = {
           </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button id="batch-delete-books-btn" class="btn btn-danger btn-sm" style="display: none;">
+            <i class="fa-solid fa-trash-can"></i> ลบเล่มที่เลือก (<span id="selected-book-count">0</span>)
+          </button>
           <button id="export-books-excel-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-file-excel text-success"></i> ส่งออก Excel
           </button>
@@ -55,10 +58,13 @@ const booksView = {
           return `
             <div class="card" style="margin-bottom: 0; position: relative; border-top: 4px solid var(--primary-600);">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
-                <div>
-                  <span class="badge badge-secondary" style="margin-bottom: 4px;">${b.doc_type_code || 'ปพ.1'}</span>
-                  <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--primary-900); margin: 0;">${b.book_code || 'BOOK-01'}</h3>
-                  <span style="font-size: 0.8rem; color: var(--text-muted);">ปีการศึกษา: <strong>${b.academic_year || '2565'}</strong> | เล่มที่ <strong>${b.book_number || '01'}</strong></span>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                  <input type="checkbox" class="book-card-cb" value="${b.book_code}" style="cursor: pointer; margin-top: 4px; width: 16px; height: 16px;">
+                  <div>
+                    <span class="badge badge-secondary" style="margin-bottom: 4px;">${b.doc_type_code || 'ปพ.1'}</span>
+                    <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--primary-900); margin: 0;">${b.book_code || 'BOOK-01'}</h3>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">ปีการศึกษา: <strong>${b.academic_year || '2565'}</strong> | เล่มที่ <strong>${b.book_number || '01'}</strong></span>
+                  </div>
                 </div>
                 <span class="badge badge-success"><i class="fa-solid fa-check"></i> ${b.location_code || 'N/A'}</span>
               </div>
@@ -271,6 +277,44 @@ const booksView = {
         );
       };
     });
+
+    const cardCbs = document.querySelectorAll('.book-card-cb');
+    const batchDelBtn = document.getElementById('batch-delete-books-btn');
+    const selectedCountSpan = document.getElementById('selected-book-count');
+
+    const updateBatchBtn = () => {
+      const selected = Array.from(document.querySelectorAll('.book-card-cb:checked')).map(cb => cb.value);
+      if (batchDelBtn && selectedCountSpan) {
+        selectedCountSpan.textContent = selected.length;
+        batchDelBtn.style.display = selected.length > 0 ? 'inline-flex' : 'none';
+      }
+    };
+
+    cardCbs.forEach(cb => cb.onchange = updateBatchBtn);
+
+    if (batchDelBtn) {
+      batchDelBtn.onclick = () => {
+        const selectedCodes = Array.from(document.querySelectorAll('.book-card-cb:checked')).map(cb => cb.value);
+        if (selectedCodes.length === 0) return;
+
+        window.utils.confirmDialog(
+          'ยืนยันการลบเล่มเอกสารกลุ่ม',
+          `คุณต้องการลบทะเบียนเล่มที่เลือกทั้งหมด <b>${selectedCodes.length} เล่ม</b> หรือไม่?`,
+          async () => {
+            batchDelBtn.disabled = true;
+            batchDelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังลบ...';
+            try {
+              await window.db.deleteBooksBatch(selectedCodes);
+              window.utils.showToast(`ลบทะเบียนเล่ม ${selectedCodes.length} เล่ม เรียบร้อยแล้ว`, 'success');
+              this.refreshPage();
+            } catch (err) {
+              window.utils.showToast(`เกิดข้อผิดพลาดในการลบกลุ่ม: ${err.message}`, 'danger');
+              batchDelBtn.disabled = false;
+            }
+          }
+        );
+      };
+    }
   },
 
   openAddBookModal(bookToEdit = null) {
@@ -361,10 +405,11 @@ const booksView = {
                 await window.db.updateBook(bookToEdit.book_code, updatedData);
                 window.utils.showToast('แก้ไขข้อมูลเล่มเรียบร้อยแล้ว', 'success');
               } else {
-                const code = `BOOK-${type.replace('.', '')}-${year}-${num}`;
+                const typeInfo = window.db ? window.db.normalizeDocType(type) : { code: type.replace('.', ''), name: type };
+                const code = `BOOK-${typeInfo.code}-${year}-${num}`;
                 const newBookData = {
                   book_code: code,
-                  doc_type_code: type,
+                  doc_type_code: typeInfo.name,
                   academic_year: year,
                   book_number: num,
                   start_no: start,

@@ -98,7 +98,7 @@ const studentDetailView = {
                 <th>วันที่จัดทำ</th>
                 <th>สถานะเอกสาร</th>
                 <th>ตำแหน่งจัดเก็บปัจจุบัน</th>
-                <th style="text-align: center;">การทำงาน / สแกน</th>
+                <th style="text-align: center;">จัดการข้อมูล</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +143,7 @@ const studentDetailView = {
                       </div>
                       <h4 style="font-weight: 700; color: var(--primary-950); margin-bottom: 0.35rem;">ยังไม่มีรายการเอกสาร ปพ. สำหรับนักเรียนคนนี้</h4>
                       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-                        สามารถกดปุ่มเพิ่มเอกสารด้านล่าง เพื่อสแกน หรือเพิ่มทะเบียนเอกสาร ปพ.1 - ปพ.9 ให้นักเรียน (${student.prefix}${student.first_name} ${student.last_name}) ได้ทันที
+                        สามารถกดปุ่มเพิ่มเอกสารด้านล่าง เพื่อบันทึก หรือเพิ่มทะเบียนเอกสาร ปพ.1 - ปพ.9 ให้นักเรียน (${student.prefix}${student.first_name} ${student.last_name}) ได้ทันที
                       </p>
                       <button id="add-student-doc-empty-btn" class="btn btn-primary">
                         <i class="fa-solid fa-file-circle-plus"></i> + เพิ่มเอกสาร ปพ. ใหม่ให้นักเรียนคนนี้

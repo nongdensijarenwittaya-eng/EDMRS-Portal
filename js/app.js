@@ -138,6 +138,29 @@ function initAppShell() {
     };
   }
 
+  // Manual Push Data to Google Sheets
+  const pushSheetsBtn = document.getElementById('push-sheets-data-btn');
+  if (pushSheetsBtn) {
+    pushSheetsBtn.onclick = async () => {
+      try {
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast('กำลังบันทึกและส่งข้อมูลลง Google Sheets...', 'info');
+        }
+        pushSheetsBtn.disabled = true;
+        await window.db.syncToGoogleSheets(null, 'sync');
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast('บันทึกข้อมูลลง Google Sheets สำเร็จเรียบร้อย!', 'success');
+        }
+      } catch (err) {
+        if (window.utils && window.utils.showToast) {
+          window.utils.showToast(`ไม่สามารถบันทึกข้อมูลลง Google Sheets ได้: ${err.message}`, 'danger');
+        }
+      } finally {
+        pushSheetsBtn.disabled = false;
+      }
+    };
+  }
+
   // Global Search Shortcut Listener (Ctrl+K)
   const globalSearchInput = document.getElementById('global-search-input');
   document.addEventListener('keydown', (e) => {
@@ -169,6 +192,46 @@ function initAppShell() {
   // Update Live Clock
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
+
+  // Fast Background Auto-Sync Poll (Check Google Sheets for live edits/adds/deletes every 3 seconds)
+  setInterval(async () => {
+    if (window.authSystem && window.authSystem.isAuthenticated()) {
+      if (window.db && !window.db.DB_STATE.saving && !window.db.DB_STATE.fetching && !window.db.googleSyncDisabled) {
+        try {
+          const res = await window.db.syncFromGoogleSheets(null, true);
+          if (res && res.hasChanges) {
+            console.log('[AUTO-SYNC] Google Sheets data updated live - re-rendering active view');
+            const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+            if (activeTag !== 'input' && activeTag !== 'select' && activeTag !== 'textarea' && window.router) {
+              window.router.handleRoute();
+            }
+          }
+        } catch (e) {
+          // silent background poll catch
+        }
+      }
+    }
+  }, 3000);
+
+  // Instant Auto-Sync on Tab Focus / Visibility Change
+  const triggerInstantSync = async () => {
+    if (window.authSystem && window.authSystem.isAuthenticated() && window.db && !window.db.DB_STATE.fetching) {
+      try {
+        const res = await window.db.syncFromGoogleSheets(null, true);
+        if (res && res.hasChanges && window.router) {
+          const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+          if (activeTag !== 'input' && activeTag !== 'select' && activeTag !== 'textarea') {
+            window.router.handleRoute();
+          }
+        }
+      } catch (e) {}
+    }
+  };
+
+  window.addEventListener('focus', triggerInstantSync);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') triggerInstantSync();
+  });
 }
 
 function updateLiveClock() {

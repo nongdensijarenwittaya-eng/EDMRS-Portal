@@ -5,7 +5,7 @@
 
 const CONFIG = {
   // Primary Central Web App URL (Google Apps Script)
-  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwjmgWDRgdqfwW1D5Lv9qaILsz6vVsu1yHz917Quk-dfBcRWX3kEyq8NSDKRXVSkM6H/exec',
+  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec',
   
   // Application Details
   APP_NAME_TH: 'ระบบจัดเก็บเอกสาร ปพ.',
@@ -16,12 +16,6 @@ const CONFIG = {
    * Helper: Resolves active Web App URL from Database Settings or default Config
    */
   getWebAppUrl() {
-    if (window.db && window.db.data && window.db.data.settings && window.db.data.settings.sheets_url) {
-      const customUrl = String(window.db.data.settings.sheets_url).trim();
-      if (customUrl && this.validateWebAppUrl(customUrl)) {
-        return customUrl;
-      }
-    }
     return this.GOOGLE_APPS_SCRIPT_URL;
   },
 

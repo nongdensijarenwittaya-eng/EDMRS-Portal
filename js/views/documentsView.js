@@ -49,6 +49,9 @@ const documentsView = {
           </p>
         </div>
         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button id="batch-delete-docs-btn" class="btn btn-danger btn-sm" style="display: none;">
+            <i class="fa-solid fa-trash-can"></i> ลบรายการที่เลือก (<span id="selected-doc-count">0</span>)
+          </button>
           <button id="export-docs-excel-btn" class="btn btn-secondary btn-sm">
             <i class="fa-solid fa-file-excel text-success"></i> ส่งออก Excel
           </button>
@@ -99,6 +102,7 @@ const documentsView = {
           <table class="data-table">
             <thead>
               <tr>
+                <th style="width: 36px; text-align: center;"><input type="checkbox" id="select-all-docs-cb" style="cursor: pointer;"></th>
                 <th>รหัสเอกสาร</th>
                 <th>ประเภท</th>
                 <th>ปีการศึกษา</th>
@@ -111,6 +115,7 @@ const documentsView = {
             <tbody>
               ${docs.length ? docs.map(d => `
                 <tr>
+                  <td style="text-align: center;"><input type="checkbox" class="doc-row-cb" value="${d.doc_code}" style="cursor: pointer;"></td>
                   <td><strong>${d.doc_code}</strong></td>
                   <td><span class="badge badge-secondary">${d.doc_type_code}</span></td>
                   <td>${d.academic_year}</td>
@@ -257,6 +262,52 @@ const documentsView = {
         );
       };
     });
+
+    const selectAllCb = document.getElementById('select-all-docs-cb');
+    const rowCbs = document.querySelectorAll('.doc-row-cb');
+    const batchDelBtn = document.getElementById('batch-delete-docs-btn');
+    const selectedCountSpan = document.getElementById('selected-doc-count');
+
+    const updateBatchBtn = () => {
+      const selected = Array.from(document.querySelectorAll('.doc-row-cb:checked')).map(cb => cb.value);
+      if (batchDelBtn && selectedCountSpan) {
+        selectedCountSpan.textContent = selected.length;
+        batchDelBtn.style.display = selected.length > 0 ? 'inline-flex' : 'none';
+      }
+    };
+
+    if (selectAllCb) {
+      selectAllCb.onchange = () => {
+        rowCbs.forEach(cb => cb.checked = selectAllCb.checked);
+        updateBatchBtn();
+      };
+    }
+
+    rowCbs.forEach(cb => cb.onchange = updateBatchBtn);
+
+    if (batchDelBtn) {
+      batchDelBtn.onclick = () => {
+        const selectedCodes = Array.from(document.querySelectorAll('.doc-row-cb:checked')).map(cb => cb.value);
+        if (selectedCodes.length === 0) return;
+
+        window.utils.confirmDialog(
+          'ยืนยันการลบเอกสารกลุ่ม',
+          `คุณต้องการลบรายการเอกสารที่เลือกทั้งหมด <b>${selectedCodes.length} รายการ</b> ออกจากระบบใช่หรือไม่?`,
+          async () => {
+            batchDelBtn.disabled = true;
+            batchDelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังลบ...';
+            try {
+              await window.db.deleteDocumentsBatch(selectedCodes);
+              window.utils.showToast(`ลบรายการเอกสาร ${selectedCodes.length} รายการ เรียบร้อยแล้ว`, 'success');
+              this.refreshTable();
+            } catch (err) {
+              window.utils.showToast(`เกิดข้อผิดพลาดในการลบกลุ่ม: ${err.message}`, 'danger');
+              batchDelBtn.disabled = false;
+            }
+          }
+        );
+      };
+    }
   },
 
   refreshTable() {
@@ -384,7 +435,8 @@ const documentsView = {
               saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
             }
 
-            const docCode = `DOC-${docTypeCode.replace('.', '')}-${gradYear}-${setNo}-${docNum}`;
+            const typeInfo = window.db ? window.db.normalizeDocType(docTypeCode) : { code: docTypeCode.replace('.', ''), name: docTypeCode };
+            const docCode = `DOC-${typeInfo.code}-${gradYear}-${setNo}-${docNum}`;
 
             try {
               if (isEdit) {

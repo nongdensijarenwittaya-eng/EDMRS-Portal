@@ -80,7 +80,7 @@ class RelationalDatabase {
     }
 
     if (!this.data.settings) this.data.settings = {};
-    if (!this.data.settings.sheets_url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(this.data.settings.sheets_url))) {
+    if (!this.data.settings.sheets_url || (window.CONFIG && !window.CONFIG.validateWebAppUrl(this.data.settings.sheets_url)) || (defaultUrl && this.data.settings.sheets_url !== defaultUrl)) {
       this.data.settings.sheets_url = defaultUrl;
     }
     
@@ -101,7 +101,11 @@ class RelationalDatabase {
     try {
       const separator = testUrl.includes('?') ? '&' : '?';
       const pingUrl = `${testUrl}${separator}action=ping&t=${Date.now()}`;
-      const res = await fetch(pingUrl);
+      const res = await fetch(pingUrl, {
+        method: 'GET',
+        credentials: 'omit',
+        cache: 'no-store'
+      });
       if (!res.ok) {
         if (res.status === 404) {
           return { success: false, message: 'HTTP 404: ไม่พบ Web App URL นี้ในระบบ Google Apps Script (กรุณาตรวจสอบว่ากดยืนยัน Deploy เป็น "Anyone/ทุกคน" หรือยัง)' };
@@ -158,24 +162,11 @@ class RelationalDatabase {
   /**
    * Single Flight HTTP GET: Fetch Data from Google Sheets
    */
-  async syncFromGoogleSheets(customUrl) {
+  async syncFromGoogleSheets(customUrl, isSilent = false) {
     console.trace("[DB][GET] called");
-    if (customUrl) {
-      this.googleSyncDisabled = false;
-    }
 
-    if (this.googleSyncDisabled && !customUrl) {
-      // Auto-recovery: If sheets_url in settings differs from CONFIG.GOOGLE_APPS_SCRIPT_URL, try config URL
-      if (window.CONFIG && window.CONFIG.GOOGLE_APPS_SCRIPT_URL && this.data.settings && this.data.settings.sheets_url !== window.CONFIG.GOOGLE_APPS_SCRIPT_URL) {
-        console.log('[DB][GET] Auto-recovering using CONFIG.GOOGLE_APPS_SCRIPT_URL');
-        this.data.settings.sheets_url = window.CONFIG.GOOGLE_APPS_SCRIPT_URL;
-        this.saveLocal();
-        this.googleSyncDisabled = false;
-      } else {
-        console.log('[DB][GET] Google Sheets sync is disabled due to invalid URL or 404');
-        return null;
-      }
-    }
+    let sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
+    this.googleSyncDisabled = false;
 
     if (this.fetchPromise) {
       console.log('[DB][GET] Single Flight: Request already running - returning existing Promise');
@@ -183,13 +174,13 @@ class RelationalDatabase {
     }
 
     this.fetchPromise = (async () => {
-      let sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+      let sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
       console.log('[DB][GET] Fetching records from:', sheetsUrl);
 
       this.DB_STATE.fetching = true;
       this.DB_STATE.lastSyncStatus = 'fetching';
 
-      if (window.utils && typeof window.utils.showLoadingModal === 'function') {
+      if (!isSilent && window.utils && typeof window.utils.showLoadingModal === 'function') {
         window.utils.showLoadingModal('กำลังเชื่อมต่อดึงข้อมูลจาก Google Sheets...', 'ระบบกำลังโหลดข้อมูลล่าสุดเพื่อความแม่นยำ 100% (โปรดรอสักครู่)');
       }
 
@@ -205,22 +196,24 @@ class RelationalDatabase {
 
         let res;
         try {
-          res = await fetch(fetchUrl);
+          res = await fetch(fetchUrl, {
+            method: 'GET',
+            credentials: 'omit',
+            cache: 'no-store'
+          });
         } catch (netErr) {
           throw new Error('ไม่สามารถเชื่อมต่อเครือข่ายได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
         }
 
         if (!res.ok) {
           if (res.status === 404) {
-            // Auto fallback check: if stored URL was old and differs from CONFIG default, update it
             if (window.CONFIG && window.CONFIG.GOOGLE_APPS_SCRIPT_URL && sheetsUrl !== window.CONFIG.GOOGLE_APPS_SCRIPT_URL) {
               console.warn('[DB][GET] Stored URL returned 404. Falling back to default CONFIG URL...');
               this.data.settings.sheets_url = window.CONFIG.GOOGLE_APPS_SCRIPT_URL;
               this.saveLocal();
-              // Recursive one-time retry with new CONFIG URL
               this.fetchPromise = null;
               this.googleSyncDisabled = false;
-              return await this.syncFromGoogleSheets(window.CONFIG.GOOGLE_APPS_SCRIPT_URL);
+              return await this.syncFromGoogleSheets(window.CONFIG.GOOGLE_APPS_SCRIPT_URL, isSilent);
             }
 
             this.googleSyncDisabled = true;
@@ -251,7 +244,7 @@ class RelationalDatabase {
         this.DB_STATE.syncMessage = '🟢 เชื่อมต่อแล้ว';
         this.currentSource = this.DATA_SOURCE.GOOGLE;
 
-        this.applySheetData(json.data);
+        const hasChanges = this.applySheetData(json.data);
 
         const studentCount = (this.data.students || []).length;
         const docCount = (this.data.documents || []).length;
@@ -259,13 +252,18 @@ class RelationalDatabase {
 
         this.DB_STATE.lastFetchAt = new Date().toLocaleString('th-TH');
         this.DB_STATE.lastSyncStatus = 'success';
-        console.log(`[DB][GET] Success: Fetched ${studentCount} students, ${docCount} documents, ${bookCount} books`);
+        console.log(`[DB][GET] Success: Fetched ${studentCount} students, ${docCount} documents, ${bookCount} books (hasChanges=${hasChanges})`);
 
-        if (window.utils && typeof window.utils.updateLoadingModalProgress === 'function') {
+        if (hasChanges) {
+          // Auto push cross-linked documents and books to Google Sheets if missing records were auto-created
+          this.syncToGoogleSheets(null, 'sync').catch(err => console.warn('[DB][GET] Auto-push cross-linked data failed:', err.message));
+        }
+
+        if (!isSilent && window.utils && typeof window.utils.updateLoadingModalProgress === 'function') {
           window.utils.updateLoadingModalProgress(100, 'โหลดข้อมูลสำเร็จ!', `พร้อมใช้งาน (${studentCount} นักเรียน, ${docCount} เอกสาร)`);
         }
 
-        return { studentCount, docCount, bookCount };
+        return { hasChanges, studentCount, docCount, bookCount };
       } catch (fetchErr) {
         this.DB_STATE.lastSyncStatus = 'error';
         console.error('[DB][ERROR] GET failed:', fetchErr.message);
@@ -273,11 +271,13 @@ class RelationalDatabase {
       } finally {
         this.DB_STATE.fetching = false;
         this.fetchPromise = null;
-        setTimeout(() => {
-          if (window.utils && typeof window.utils.hideLoadingModal === 'function') {
-            window.utils.hideLoadingModal();
-          }
-        }, 300);
+        if (!isSilent) {
+          setTimeout(() => {
+            if (window.utils && typeof window.utils.hideLoadingModal === 'function') {
+              window.utils.hideLoadingModal();
+            }
+          }, 300);
+        }
       }
     })();
 
@@ -289,9 +289,7 @@ class RelationalDatabase {
    */
   async syncToGoogleSheets(customUrl, actionName = 'sync') {
     console.trace(`[DB][${actionName.toUpperCase()}] called`);
-    if (this.googleSyncDisabled && !customUrl) {
-      return { status: 'disabled', message: 'Google Sheets Sync ถูกปิดใช้งานเนื่องจาก URL ไม่ถูกต้องหรือตอบกลับ 404' };
-    }
+    this.googleSyncDisabled = false;
 
     if (this.savePromise) {
       console.log(`[DB][${actionName.toUpperCase()}] Single Flight: Write request in progress - reusing Promise`);
@@ -299,7 +297,7 @@ class RelationalDatabase {
     }
 
     this.savePromise = (async () => {
-      const sheetsUrl = customUrl || (this.data.settings && this.data.settings.sheets_url) || (window.CONFIG ? window.CONFIG.getWebAppUrl() : '');
+      const sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
       if (!sheetsUrl || (window.CONFIG && !window.CONFIG.validateWebAppUrl(sheetsUrl))) {
         this.googleSyncDisabled = true;
         this.DB_STATE.syncMessage = '🔴 URL ไม่ถูกต้อง: กรุณาตั้งค่า Web App URL ที่ลงท้ายด้วย /exec ในหน้าตั้งค่าระบบ';
@@ -327,7 +325,8 @@ class RelationalDatabase {
         let res = await fetch(sheetsUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          credentials: 'omit'
         });
 
         if (!res.ok) {
@@ -376,11 +375,227 @@ class RelationalDatabase {
     return this.savePromise;
   }
 
+  normalizeDocType(type) {
+    const t = String(type || 'ปพ.1').trim();
+    if (/^(p1|uw1|uw\.1|ปพ1|ปพ\.1)$/i.test(t)) return { code: 'ปพ1', name: 'ปพ.1' };
+    if (/^(p2|uw2|uw\.2|ปพ2|ปพ\.2)$/i.test(t)) return { code: 'ปพ2', name: 'ปพ.2' };
+    if (/^(p3|uw3|uw\.3|ปพ3|ปพ\.3)$/i.test(t)) return { code: 'ปพ3', name: 'ปพ.3' };
+    if (/^(p7|uw7|uw\.7|ปพ7|ปพ\.7)$/i.test(t)) return { code: 'ปพ7', name: 'ปพ.7' };
+    if (/^(p9|uw9|uw\.9|ปพ9|ปพ\.9)$/i.test(t)) return { code: 'ปพ9', name: 'ปพ.9' };
+    const clean = t.replace(/[\.\_\-\s]/g, '').toUpperCase();
+    return { code: clean || 'ปพ1', name: t || 'ปพ.1' };
+  }
+
+  /**
+   * Auto Cross Link Students (หน้าแรก), Documents (หน้าสอง), and Books (หน้าสาม)
+   */
+  autoCrossLinkData() {
+    if (!this.data) return;
+    const students = this.data.students || [];
+    const documents = this.data.documents || [];
+    const books = this.data.books || [];
+
+    const deletedStudents = ((this.data.deleted_keys && this.data.deleted_keys.students) || []).map(k => String(k).toLowerCase());
+    const deletedDocuments = ((this.data.deleted_keys && this.data.deleted_keys.documents) || []).map(k => String(k).toLowerCase());
+    const deletedBooks = ((this.data.deleted_keys && this.data.deleted_keys.books) || []).map(k => String(k).toLowerCase());
+
+    const studentMap = new Map();
+    students.forEach(s => {
+      if (s.student_id) studentMap.set(String(s.student_id).trim().toLowerCase(), s);
+    });
+
+    const docMapBySid = new Map();
+    const docMapByCode = new Map();
+    documents.forEach(d => {
+      if (d.doc_code) docMapByCode.set(String(d.doc_code).trim().toLowerCase(), d);
+      if (d.student_id) docMapBySid.set(String(d.student_id).trim().toLowerCase(), d);
+    });
+
+    const bookMap = new Map();
+    const bookByNumberYear = new Map();
+    books.forEach(b => {
+      const codeKey = String(b.book_code || '').trim().toLowerCase();
+      if (codeKey) bookMap.set(codeKey, b);
+      const nyKey = `${String(b.book_number || '').trim()}_${String(b.academic_year || '').trim()}`.toLowerCase();
+      if (nyKey && !bookByNumberYear.has(nyKey)) {
+        bookByNumberYear.set(nyKey, b);
+      }
+    });
+
+    let added = false;
+
+    // Cross Link 1: From Students (หน้าแรก) -> Auto add/sync missing Documents (หน้าสอง) & Books (หน้าสาม)
+    students.forEach(s => {
+      const sid = String(s.student_id || '').trim();
+      if (!sid) return;
+      const sKey = sid.toLowerCase();
+      if (deletedStudents.includes(sKey)) return;
+
+      const fullName = `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim();
+      const setNum = String(s.set_number || s.book_number || '01').trim();
+      const docNum = String(s.doc_number || '001').trim();
+      const year = String(s.academic_year || '2569').trim();
+
+      let docTypeCode = 'ปพ.1';
+      let locationCode = 'LOC-A01-01-01';
+
+      let existingBook = null;
+      if (s.book_code) {
+        existingBook = bookMap.get(String(s.book_code).toLowerCase());
+      }
+      if (!existingBook) {
+        const nyKey = `${setNum}_${year}`.toLowerCase();
+        existingBook = bookByNumberYear.get(nyKey);
+      }
+      if (existingBook) {
+        docTypeCode = existingBook.doc_type_code || 'ปพ.1';
+        locationCode = existingBook.location_code || 'LOC-A01-01-01';
+      }
+
+      const typeInfo = this.normalizeDocType(docTypeCode);
+      const docCode = `DOC-${typeInfo.code}-${sid}`;
+      const dKey = docCode.toLowerCase();
+
+      let existingDoc = docMapBySid.get(sKey) || docMapByCode.get(dKey);
+      const targetBookCode = existingBook ? existingBook.book_code : (s.book_code || `BOOK-${typeInfo.code}-${year}-${setNum}`);
+      if (existingDoc) {
+        if (existingDoc.student_name !== fullName || existingDoc.doc_number !== docNum || existingDoc.book_number !== setNum || existingDoc.academic_year !== year || existingDoc.book_code !== targetBookCode) {
+          existingDoc.student_name = fullName;
+          existingDoc.doc_number = docNum;
+          existingDoc.book_number = setNum;
+          existingDoc.academic_year = year;
+          existingDoc.book_code = targetBookCode;
+          existingDoc.updated_at = new Date().toISOString();
+          added = true;
+        }
+      } else if (!deletedDocuments.includes(dKey)) {
+        const newDoc = {
+          id: documents.length + 1,
+          doc_code: docCode,
+          student_id: sid,
+          student_name: fullName,
+          doc_type_code: docTypeCode,
+          academic_year: year,
+          book_number: setNum,
+          doc_number: docNum,
+          book_code: targetBookCode,
+          status: 'stored',
+          location_code: locationCode,
+          updated_at: new Date().toISOString()
+        };
+        documents.push(newDoc);
+        docMapBySid.set(sKey, newDoc);
+        docMapByCode.set(dKey, newDoc);
+        added = true;
+      }
+
+      // Check Book deduplicating by book_number + academic_year OR book_code
+      const bCode = existingBook ? existingBook.book_code : (s.book_code || `BOOK-${typeInfo.code}-${year}-${setNum}`);
+      const bKey = bCode.toLowerCase();
+      const nyKey = `${setNum}_${year}`.toLowerCase();
+
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+        const newBk = {
+          id: books.length + 1,
+          book_code: bCode,
+          doc_type_code: typeInfo.name,
+          academic_year: year,
+          book_number: setNum,
+          start_no: '001',
+          end_no: '050',
+          item_count: 50,
+          location_code: locationCode,
+          updated_at: new Date().toISOString()
+        };
+        books.push(newBk);
+        bookMap.set(bKey, newBk);
+        bookByNumberYear.set(nyKey, newBk);
+        added = true;
+      }
+    });
+
+    // Cross Link 2: From Documents (หน้าสอง) -> Auto add missing Students (หน้าแรก) & missing Books (หน้าสาม)
+    documents.forEach(d => {
+      const sid = String(d.student_id || '').trim();
+      const sKey = sid.toLowerCase();
+      if (sid && !studentMap.has(sKey) && !deletedStudents.includes(sKey)) {
+        const full = d.student_name || '';
+        let prefix = '';
+        let firstName = full;
+        let lastName = '';
+
+        if (full.startsWith('นาย')) { prefix = 'นาย'; firstName = full.replace('นาย', '').trim(); }
+        else if (full.startsWith('นางสาว')) { prefix = 'นางสาว'; firstName = full.replace('นางสาว', '').trim(); }
+        else if (full.startsWith('นาง')) { prefix = 'นาง'; firstName = full.replace('นาง', '').trim(); }
+        else if (full.startsWith('เด็กชาย')) { prefix = 'เด็กชาย'; firstName = full.replace('เด็กชาย', '').trim(); }
+        else if (full.startsWith('เด็กหญิง')) { prefix = 'เด็กหญิง'; firstName = full.replace('เด็กหญิง', '').trim(); }
+
+        const parts = firstName.split(/\s+/);
+        if (parts.length > 1) {
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+
+        const newSt = {
+          id: students.length + 1,
+          student_id: sid,
+          prefix: prefix,
+          first_name: firstName || full || 'นักเรียน',
+          last_name: lastName,
+          previous_name: '',
+          grade_level: 'ม.1',
+          academic_year: d.academic_year || '2569',
+          doc_number: d.doc_number || '001',
+          set_number: d.book_number || '01',
+          status: 'ปกติ',
+          updated_at: new Date().toISOString()
+        };
+        students.push(newSt);
+        studentMap.set(sKey, newSt);
+        added = true;
+      }
+
+      // Check Book deduplicating by book_number + academic_year OR book_code
+      const bNum = String(d.book_number || '01').trim();
+      const dType = d.doc_type_code || 'ปพ.1';
+      const aYear = String(d.academic_year || '2569').trim();
+      const typeInfo = this.normalizeDocType(dType);
+      const bCode = d.book_code || `BOOK-${typeInfo.code}-${aYear}-${bNum}`;
+      const bKey = bCode.toLowerCase();
+      const nyKey = `${bNum}_${aYear}`.toLowerCase();
+
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+        const newBk = {
+          id: books.length + 1,
+          book_code: bCode,
+          doc_type_code: typeInfo.name,
+          academic_year: aYear,
+          book_number: bNum,
+          start_no: '001',
+          end_no: '050',
+          item_count: 50,
+          location_code: d.location_code || 'LOC-A01-01-01',
+          updated_at: new Date().toISOString()
+        };
+        books.push(newBk);
+        bookMap.set(bKey, newBk);
+        bookByNumberYear.set(nyKey, newBk);
+        added = true;
+      }
+    });
+
+    this.data.students = students;
+    this.data.documents = documents;
+    this.data.books = books;
+    return added;
+  }
+
   /**
    * Save Local Storage Cache
    */
   saveLocal() {
     this.cleanupDeletedKeys();
+    this.autoCrossLinkData();
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
     } catch (e) {
@@ -399,11 +614,49 @@ class RelationalDatabase {
   }
 
   /**
-   * Apply Parsed Sheet Data into State
+   * Helper: Smart merge local items with parsed sheet items to prevent overwriting local additions
+   */
+  mergeEntityList(localList, parsedList, deletedKeys, keyField = 'id') {
+    const map = new Map();
+    const cleanDeleted = (deletedKeys || []).map(k => String(k).toLowerCase());
+
+    // 1. Add items from Google Sheets
+    (parsedList || []).forEach(item => {
+      if (!item) return;
+      const k = String(item[keyField] || '').trim().toLowerCase();
+      if (k && !cleanDeleted.includes(k)) {
+        map.set(k, item);
+      }
+    });
+
+    // 2. Merge items from Local state (preserving local additions & newer timestamp edits)
+    (localList || []).forEach(item => {
+      if (!item) return;
+      const k = String(item[keyField] || '').trim().toLowerCase();
+      if (!k || cleanDeleted.includes(k)) return;
+
+      const existing = map.get(k);
+      if (!existing) {
+        map.set(k, item);
+      } else {
+        const localTime = Date.parse(item.updated_at || '') || 0;
+        const sheetTime = Date.parse(existing.updated_at || '') || 0;
+        if (localTime > sheetTime) {
+          map.set(k, item);
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }
+
+  /**
+   * Apply Parsed Sheet Data into State & Detect Changes
    */
   applySheetData(sheetData) {
-    if (!sheetData || typeof sheetData !== 'object') return;
+    if (!sheetData || typeof sheetData !== 'object') return false;
 
+    let hasChanges = false;
     if (!this.data.deleted_keys) {
       this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
     }
@@ -415,9 +668,11 @@ class RelationalDatabase {
     const deletedLoans = (this.data.deleted_keys.loans || []).map(k => String(k).toLowerCase());
     const deletedLocs = (this.data.deleted_keys.storage_locations || []).map(k => String(k).toLowerCase());
 
+    const isDifferent = (oldArr, newArr) => JSON.stringify(oldArr || []) !== JSON.stringify(newArr || []);
+
     // 1. Students
-    if (Array.isArray(sheetData.Students) && sheetData.Students.length > 1) {
-      const rows = sheetData.Students.slice(1);
+    if (Array.isArray(sheetData.Students)) {
+      const rows = sheetData.Students.length > 1 ? sheetData.Students.slice(1) : [];
       const parsedStudents = rows.map((row, idx) => ({
         id: idx + 1,
         student_id: String(row[0] || '').trim(),
@@ -431,66 +686,51 @@ class RelationalDatabase {
         set_number: String(row[8] || '').trim(),
         status: String(row[9] || 'ปกติ').trim(),
         updated_at: String(row[10] || '').trim()
-      })).filter(s => s.student_id);
+      })).filter(s => s.student_id && !deletedStudents.includes(s.student_id.toLowerCase()));
 
-      const studentMap = new Map();
-      (this.data.students || []).forEach(s => {
-        const sid = String(s.student_id).toLowerCase();
-        if (!deletedStudents.includes(sid)) studentMap.set(sid, s);
-      });
-
-      parsedStudents.forEach(s => {
-        const sid = String(s.student_id).toLowerCase();
-        if (!deletedStudents.includes(sid)) {
-          const local = studentMap.get(sid);
-          if (!local || !local.updated_at || (s.updated_at && s.updated_at >= local.updated_at)) {
-            studentMap.set(sid, { ...local, ...s });
-          }
-        }
-      });
-
-      this.data.students = Array.from(studentMap.values());
+      const merged = this.mergeEntityList(this.data.students, parsedStudents, deletedStudents, 'student_id');
+      if (isDifferent(this.data.students, merged)) {
+        this.data.students = merged;
+        hasChanges = true;
+      }
     }
 
     // 2. Documents
-    if (Array.isArray(sheetData.Documents) && sheetData.Documents.length > 1) {
-      const rows = sheetData.Documents.slice(1);
-      const parsedDocs = rows.map((row, idx) => ({
-        id: idx + 1,
-        doc_code: String(row[0] || '').trim(),
-        student_id: String(row[1] || '').trim(),
-        student_name: String(row[2] || '').trim(),
-        doc_type_code: String(row[3] || 'ปพ.1').trim(),
-        academic_year: String(row[4] || '').trim(),
-        book_number: String(row[5] || '').trim(),
-        doc_number: String(row[6] || '').trim(),
-        status: String(row[7] || 'stored').trim(),
-        location_code: String(row[8] || '').trim(),
-        updated_at: String(row[9] || '').trim()
-      })).filter(d => d.doc_code || d.doc_number);
+    if (Array.isArray(sheetData.Documents)) {
+      const rows = sheetData.Documents.length > 1 ? sheetData.Documents.slice(1) : [];
+      const parsedDocs = rows.map((row, idx) => {
+        const dcode = String(row[0] || '').trim();
+        const docNum = String(row[6] || '').trim();
+        const docTypeCode = String(row[3] || 'ปพ.1').trim();
+        const acYear = String(row[4] || '').trim();
+        const bookNum = String(row[5] || '').trim();
+        const code = dcode || (docNum ? `DOC-${docTypeCode.replace('.', '')}-${acYear || '2565'}-${bookNum || '01'}-${docNum}` : '');
 
-      const docMap = new Map();
-      (this.data.documents || []).forEach(d => {
-        const dcode = String(d.doc_code).toLowerCase();
-        if (!deletedDocs.includes(dcode)) docMap.set(dcode, d);
-      });
+        return {
+          id: idx + 1,
+          doc_code: code,
+          student_id: String(row[1] || '').trim(),
+          student_name: String(row[2] || '').trim(),
+          doc_type_code: docTypeCode,
+          academic_year: acYear,
+          book_number: bookNum,
+          doc_number: docNum,
+          status: String(row[7] || 'stored').trim(),
+          location_code: String(row[8] || '').trim(),
+          updated_at: String(row[9] || '').trim()
+        };
+      }).filter(d => d.doc_code && !deletedDocs.includes(d.doc_code.toLowerCase()));
 
-      parsedDocs.forEach(d => {
-        const dcode = String(d.doc_code).toLowerCase();
-        if (!deletedDocs.includes(dcode)) {
-          const local = docMap.get(dcode);
-          if (!local || !local.updated_at || (d.updated_at && d.updated_at >= local.updated_at)) {
-            docMap.set(dcode, { ...local, ...d });
-          }
-        }
-      });
-
-      this.data.documents = Array.from(docMap.values());
+      const merged = this.mergeEntityList(this.data.documents, parsedDocs, deletedDocs, 'doc_code');
+      if (isDifferent(this.data.documents, merged)) {
+        this.data.documents = merged;
+        hasChanges = true;
+      }
     }
 
     // 3. Books
-    if (Array.isArray(sheetData.Books) && sheetData.Books.length > 1) {
-      const rows = sheetData.Books.slice(1);
+    if (Array.isArray(sheetData.Books)) {
+      const rows = sheetData.Books.length > 1 ? sheetData.Books.slice(1) : [];
       const parsedBooks = rows.map((row, idx) => ({
         id: idx + 1,
         book_code: String(row[0] || '').trim(),
@@ -502,30 +742,18 @@ class RelationalDatabase {
         item_count: Number(row[6] || 0),
         location_code: String(row[7] || '').trim(),
         updated_at: String(row[8] || '').trim()
-      })).filter(b => b.book_code);
+      })).filter(b => b.book_code && !deletedBooks.includes(b.book_code.toLowerCase()));
 
-      const bookMap = new Map();
-      (this.data.books || []).forEach(b => {
-        const bcode = String(b.book_code).toLowerCase();
-        if (!deletedBooks.includes(bcode)) bookMap.set(bcode, b);
-      });
-
-      parsedBooks.forEach(b => {
-        const bcode = String(b.book_code).toLowerCase();
-        if (!deletedBooks.includes(bcode)) {
-          const local = bookMap.get(bcode);
-          if (!local || !local.updated_at || (b.updated_at && b.updated_at >= local.updated_at)) {
-            bookMap.set(bcode, { ...local, ...b });
-          }
-        }
-      });
-
-      this.data.books = Array.from(bookMap.values());
+      const merged = this.mergeEntityList(this.data.books, parsedBooks, deletedBooks, 'book_code');
+      if (isDifferent(this.data.books, merged)) {
+        this.data.books = merged;
+        hasChanges = true;
+      }
     }
 
     // 4. Loans
-    if (Array.isArray(sheetData.Loans) && sheetData.Loans.length > 1) {
-      const rows = sheetData.Loans.slice(1);
+    if (Array.isArray(sheetData.Loans)) {
+      const rows = sheetData.Loans.length > 1 ? sheetData.Loans.slice(1) : [];
       const parsedLoans = rows.map((row, idx) => ({
         id: idx + 1,
         loan_code: String(row[0] || '').trim(),
@@ -539,30 +767,18 @@ class RelationalDatabase {
         reason: String(row[8] || '').trim(),
         status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending',
         updated_at: String(row[10] || '').trim()
-      })).filter(l => l.loan_code);
+      })).filter(l => l.loan_code && !deletedLoans.includes(l.loan_code.toLowerCase()));
 
-      const loanMap = new Map();
-      (this.data.loans || []).forEach(l => {
-        const lcode = String(l.loan_code).toLowerCase();
-        if (!deletedLoans.includes(lcode)) loanMap.set(lcode, l);
-      });
-
-      parsedLoans.forEach(l => {
-        const lcode = String(l.loan_code).toLowerCase();
-        if (!deletedLoans.includes(lcode)) {
-          const local = loanMap.get(lcode);
-          if (!local || !local.updated_at || (l.updated_at && l.updated_at >= local.updated_at)) {
-            loanMap.set(lcode, { ...local, ...l });
-          }
-        }
-      });
-
-      this.data.loans = Array.from(loanMap.values());
+      const merged = this.mergeEntityList(this.data.loans, parsedLoans, deletedLoans, 'loan_code');
+      if (isDifferent(this.data.loans, merged)) {
+        this.data.loans = merged;
+        hasChanges = true;
+      }
     }
 
     // 5. Storage_Locations
-    if (Array.isArray(sheetData.Storage_Locations) && sheetData.Storage_Locations.length > 1) {
-      const rows = sheetData.Storage_Locations.slice(1);
+    if (Array.isArray(sheetData.Storage_Locations)) {
+      const rows = sheetData.Storage_Locations.length > 1 ? sheetData.Storage_Locations.slice(1) : [];
       const parsedLocs = rows.map((row, idx) => ({
         id: idx + 1,
         code: String(row[0] || '').trim(),
@@ -573,30 +789,18 @@ class RelationalDatabase {
         folder: String(row[5] || '').trim(),
         description: String(row[6] || '').trim(),
         updated_at: String(row[7] || '').trim()
-      })).filter(l => l.code);
+      })).filter(l => l.code && !deletedLocs.includes(l.code.toLowerCase()));
 
-      const locMap = new Map();
-      (this.data.storage_locations || []).forEach(l => {
-        const lcode = String(l.code).toLowerCase();
-        if (!deletedLocs.includes(lcode)) locMap.set(lcode, l);
-      });
-
-      parsedLocs.forEach(l => {
-        const lcode = String(l.code).toLowerCase();
-        if (!deletedLocs.includes(lcode)) {
-          const local = locMap.get(lcode);
-          if (!local || !local.updated_at || (l.updated_at && l.updated_at >= local.updated_at)) {
-            locMap.set(lcode, { ...local, ...l });
-          }
-        }
-      });
-
-      this.data.storage_locations = Array.from(locMap.values());
+      const merged = this.mergeEntityList(this.data.storage_locations, parsedLocs, deletedLocs, 'code');
+      if (isDifferent(this.data.storage_locations, merged)) {
+        this.data.storage_locations = merged;
+        hasChanges = true;
+      }
     }
 
     // 6. Users
-    if (Array.isArray(sheetData.Users) && sheetData.Users.length > 1) {
-      const rows = sheetData.Users.slice(1);
+    if (Array.isArray(sheetData.Users)) {
+      const rows = sheetData.Users.length > 1 ? sheetData.Users.slice(1) : [];
       const parsedUsers = rows.map((row, idx) => ({
         id: idx + 1,
         username: String(row[0] || '').trim(),
@@ -608,25 +812,13 @@ class RelationalDatabase {
         created_at: String(row[6] || '').trim(),
         password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim(),
         updated_at: String(row[8] || '').trim()
-      })).filter(u => u.username);
+      })).filter(u => u.username && !deletedUsers.includes(u.username.toLowerCase()));
 
-      const userMap = new Map();
-      (this.data.users || []).forEach(u => {
-        const uname = String(u.username).toLowerCase();
-        if (!deletedUsers.includes(uname)) userMap.set(uname, u);
-      });
-
-      parsedUsers.forEach(u => {
-        const uname = String(u.username).toLowerCase();
-        if (!deletedUsers.includes(uname)) {
-          const local = userMap.get(uname);
-          if (!local || !local.updated_at || (u.updated_at && u.updated_at >= local.updated_at)) {
-            userMap.set(uname, { ...local, ...u });
-          }
-        }
-      });
-
-      this.data.users = Array.from(userMap.values());
+      const merged = this.mergeEntityList(this.data.users, parsedUsers, deletedUsers, 'username');
+      if (isDifferent(this.data.users, merged)) {
+        this.data.users = merged;
+        hasChanges = true;
+      }
     }
 
     // 7. Settings
@@ -638,10 +830,18 @@ class RelationalDatabase {
         const val = String(row[1] || '').trim();
         if (key) parsedSettings[key] = val;
       });
-      this.data.settings = parsedSettings;
+      if (isDifferent(this.data.settings, parsedSettings)) {
+        this.data.settings = parsedSettings;
+        hasChanges = true;
+      }
     }
 
-    this.saveLocal();
+    const crossLinked = this.autoCrossLinkData();
+    if (hasChanges || crossLinked) {
+      this.saveLocal();
+      hasChanges = true;
+    }
+    return hasChanges;
   }
 
   /**
@@ -720,7 +920,11 @@ class RelationalDatabase {
     if (filters.grade_level) {
       list = list.filter(s => String(s.grade_level) === String(filters.grade_level));
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const idA = String(a.student_id || '').trim();
+      const idB = String(b.student_id || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   getStudentById(id) {
@@ -739,7 +943,25 @@ class RelationalDatabase {
       );
     }
     if (filters.book_code) {
-      list = list.filter(d => String(d.book_code) === String(filters.book_code));
+      const targetBookCode = String(filters.book_code).trim().toLowerCase();
+      const targetBook = (this.data.books || []).find(b => String(b.book_code || '').trim().toLowerCase() === targetBookCode);
+
+      list = list.filter(d => {
+        const dBookCode = String(d.book_code || '').trim().toLowerCase();
+        if (dBookCode && dBookCode === targetBookCode) return true;
+
+        if (targetBook) {
+          const bNum = String(targetBook.book_number || '').trim();
+          const aYear = String(targetBook.academic_year || '').trim();
+          const dNum = String(d.book_number || d.set_number || '').trim();
+          const dYear = String(d.academic_year || '').trim();
+
+          if (bNum && aYear && dNum === bNum && dYear === aYear) {
+            return true;
+          }
+        }
+        return false;
+      });
     }
     if (filters.doc_type_code) {
       list = list.filter(d => String(d.doc_type_code) === String(filters.doc_type_code));
@@ -747,7 +969,11 @@ class RelationalDatabase {
     if (filters.academic_year) {
       list = list.filter(d => String(d.academic_year) === String(filters.academic_year));
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const idA = String(a.student_id || a.doc_number || '').trim();
+      const idB = String(b.student_id || b.doc_number || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   getBooks(filters = {}) {
@@ -776,7 +1002,11 @@ class RelationalDatabase {
         String(l.borrower_name || '').toLowerCase().includes(q)
       );
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const idA = String(a.student_id || '').trim();
+      const idB = String(b.student_id || '').trim();
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   getLocations(filters = {}) {
@@ -826,19 +1056,30 @@ class RelationalDatabase {
     let docTypeCode = 'ปพ.1';
     let locationCode = 'LOC-A01-01-01';
 
-    if (bookCode && this.data.books) {
-      const bookObj = this.data.books.find(b => b.book_code === bookCode);
-      if (bookObj) {
-        docTypeCode = bookObj.doc_type_code || 'ปพ.1';
-        locationCode = bookObj.location_code || 'LOC-A01-01-01';
+    let existingBook = null;
+    if (this.data.books && this.data.books.length > 0) {
+      if (bookCode) {
+        existingBook = this.data.books.find(b => b.book_code === bookCode);
       }
-    } else {
-      const cleanType = docTypeCode.replace(/[\.\_\-\s]/g, '');
-      bookCode = `BOOK-${cleanType}-${year}-${String(setNum).padStart(2, '0')}`;
+      if (!existingBook) {
+        existingBook = this.data.books.find(b =>
+          String(b.book_number || '').trim() === setNum &&
+          String(b.academic_year || '').trim() === year
+        );
+      }
     }
 
-    const cleanType = docTypeCode.replace(/[\.\_\-\s]/g, '').toUpperCase();
-    const docCode = `DOC-${cleanType}-${sid}`;
+    if (existingBook) {
+      bookCode = existingBook.book_code;
+      docTypeCode = existingBook.doc_type_code || 'ปพ.1';
+      locationCode = existingBook.location_code || 'LOC-A01-01-01';
+    } else {
+      const typeInfo = this.normalizeDocType(docTypeCode);
+      bookCode = `BOOK-${typeInfo.code}-${year}-${setNum}`;
+    }
+
+    const typeInfo = this.normalizeDocType(docTypeCode);
+    const docCode = `DOC-${typeInfo.code}-${sid}`;
 
     if (!this.data.documents) this.data.documents = [];
 
@@ -869,10 +1110,27 @@ class RelationalDatabase {
   // --- Student CRUD ---
   async addStudent(studentData) {
     if (!studentData.student_id) throw new Error('ต้องระบุรหัสนักเรียน (student_id)');
+    const cleanSid = String(studentData.student_id).trim();
+
+    // Deduplication check
+    const existingIdx = (this.data.students || []).findIndex(s => String(s.student_id).trim().toLowerCase() === cleanSid.toLowerCase());
+    if (existingIdx !== -1) {
+      this.data.students[existingIdx] = {
+        ...this.data.students[existingIdx],
+        ...studentData,
+        updated_at: new Date().toISOString()
+      };
+      this.ensureStudentDocumentLinked(this.data.students[existingIdx]);
+      this.saveLocal();
+      this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateStudent failed:', err.message));
+      return this.data.students[existingIdx];
+    }
+
     const now = new Date().toISOString();
     const newStudent = {
       id: (this.data.students || []).length + 1,
       ...studentData,
+      student_id: cleanSid,
       updated_at: now
     };
     if (!this.data.students) this.data.students = [];
@@ -881,9 +1139,10 @@ class RelationalDatabase {
     // Auto-link document entry in Documents table
     this.ensureStudentDocumentLinked(newStudent);
 
-    this.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียน ${studentData.first_name} ${studentData.last_name} (${studentData.student_id}) และสร้างทะเบียนเอกสาร ปพ.`);
+    this.addAuditLog('ข้อมูลนักเรียน', 'เพิ่มข้อมูล', `เพิ่มนักเรียน ${studentData.first_name} ${studentData.last_name} (${cleanSid}) และสร้างทะเบียนเอกสาร ปพ.`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addStudent failed:', err.message));
+    return newStudent;
   }
 
   async updateStudent(studentId, studentData) {
@@ -902,7 +1161,8 @@ class RelationalDatabase {
 
     this.addAuditLog('ข้อมูลนักเรียน', 'แก้ไขข้อมูล', `แก้ไขข้อมูลนักเรียน ${studentId} และอัปเดตทะเบียนเอกสาร ปพ.`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'update');
+    this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateStudent failed:', err.message));
+    return this.data.students[idx];
   }
 
   async deleteStudent(studentId) {
@@ -932,19 +1192,59 @@ class RelationalDatabase {
     return await this.syncToGoogleSheets(null, 'delete');
   }
 
+  async deleteStudentsBatch(studentIds) {
+    if (!Array.isArray(studentIds) || studentIds.length === 0) return null;
+    const cleanIds = studentIds.map(id => String(id).trim().toLowerCase());
+    
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.students) this.data.deleted_keys.students = [];
+    if (!this.data.deleted_keys.documents) this.data.deleted_keys.documents = [];
+
+    if (this.data.documents) {
+      const deletedDocs = this.data.documents.filter(d => cleanIds.includes(String(d.student_id).trim().toLowerCase()));
+      deletedDocs.forEach(d => {
+        if (d.doc_code && !this.data.deleted_keys.documents.includes(String(d.doc_code).trim().toLowerCase())) {
+          this.data.deleted_keys.documents.push(String(d.doc_code).trim().toLowerCase());
+        }
+      });
+      this.data.documents = this.data.documents.filter(d => !cleanIds.includes(String(d.student_id).trim().toLowerCase()));
+    }
+
+    cleanIds.forEach(sid => {
+      if (!this.data.deleted_keys.students.includes(sid)) {
+        this.data.deleted_keys.students.push(sid);
+      }
+    });
+    this.data.students = (this.data.students || []).filter(s => !cleanIds.includes(String(s.student_id).trim().toLowerCase()));
+
+    this.addAuditLog('ข้อมูลนักเรียน', 'ลบข้อมูลกลุ่ม', `ลบข้อมูลนักเรียนจำนวน ${studentIds.length} รายการและเอกสารที่เชื่อมโยง`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
   // --- Document CRUD ---
   async addDocument(docData) {
     if (!docData.doc_code) throw new Error('ต้องระบุรหัสเอกสาร (doc_code)');
+    const cleanCode = String(docData.doc_code).trim();
+
+    const existing = (this.data.documents || []).find(d => String(d.doc_code).trim().toLowerCase() === cleanCode.toLowerCase());
+    if (existing) {
+      console.warn('[DB] Duplicate document add prevented:', cleanCode);
+      return existing;
+    }
+
     const newDoc = {
       id: (this.data.documents || []).length + 1,
       ...docData,
+      doc_code: cleanCode,
       updated_at: new Date().toISOString()
     };
     if (!this.data.documents) this.data.documents = [];
     this.data.documents.unshift(newDoc);
-    this.addAuditLog('เอกสาร ปพ.', 'เพิ่มเอกสาร', `เพิ่มเอกสาร ${docData.doc_code}`);
+    this.addAuditLog('เอกสาร ปพ.', 'เพิ่มเอกสาร', `เพิ่มเอกสาร ${cleanCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addDocument failed:', err.message));
+    return newDoc;
   }
 
   async updateDocument(docCode, docData) {
@@ -958,7 +1258,8 @@ class RelationalDatabase {
     };
     this.addAuditLog('เอกสาร ปพ.', 'แก้ไขเอกสาร', `แก้ไขเอกสาร ${docCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'update');
+    this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateDocument failed:', err.message));
+    return this.data.documents[idx];
   }
 
   async deleteDocument(docCode, docId) {
@@ -974,19 +1275,49 @@ class RelationalDatabase {
     return await this.syncToGoogleSheets(null, 'delete');
   }
 
+  async deleteDocumentsBatch(docCodes) {
+    if (!Array.isArray(docCodes) || docCodes.length === 0) return null;
+    const cleanCodes = docCodes.map(c => String(c).trim().toLowerCase());
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.documents) this.data.deleted_keys.documents = [];
+
+    cleanCodes.forEach(code => {
+      if (!this.data.deleted_keys.documents.includes(code)) {
+        this.data.deleted_keys.documents.push(code);
+      }
+    });
+
+    this.data.documents = (this.data.documents || []).filter(d => !cleanCodes.includes(String(d.doc_code).trim().toLowerCase()));
+
+    this.addAuditLog('เอกสาร ปพ.', 'ลบเอกสารกลุ่ม', `ลบรายการเอกสาร ปพ. จำนวน ${docCodes.length} รายการ`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
   // --- Book CRUD ---
   async addBook(bookData) {
     if (!bookData.book_code) throw new Error('ต้องระบุรหัสเล่ม (book_code)');
+    const cleanCode = String(bookData.book_code).trim();
+
+    const existing = (this.data.books || []).find(b => String(b.book_code).trim().toLowerCase() === cleanCode.toLowerCase());
+    if (existing) {
+      console.warn('[DB] Duplicate book add prevented:', cleanCode);
+      return existing;
+    }
+
     const newBook = {
       id: (this.data.books || []).length + 1,
       ...bookData,
+      book_code: cleanCode,
       updated_at: new Date().toISOString()
     };
     if (!this.data.books) this.data.books = [];
     this.data.books.unshift(newBook);
-    this.addAuditLog('ทะเบียนเล่ม', 'เพิ่มเล่ม', `เพิ่มเล่ม ${bookData.book_code}`);
+    this.addAuditLog('ทะเบียนเล่ม', 'เพิ่มเล่ม', `เพิ่มเล่ม ${cleanCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addBook failed:', err.message));
+    return newBook;
   }
 
   async updateBook(bookCode, bookData) {
@@ -1000,7 +1331,8 @@ class RelationalDatabase {
     };
     this.addAuditLog('ทะเบียนเล่ม', 'แก้ไขเล่ม', `แก้ไขเล่ม ${bookCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'update');
+    this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateBook failed:', err.message));
+    return this.data.books[idx];
   }
 
   async deleteBook(bookCode) {
@@ -1016,19 +1348,49 @@ class RelationalDatabase {
     return await this.syncToGoogleSheets(null, 'delete');
   }
 
+  async deleteBooksBatch(bookCodes) {
+    if (!Array.isArray(bookCodes) || bookCodes.length === 0) return null;
+    const cleanCodes = bookCodes.map(c => String(c).trim().toLowerCase());
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.books) this.data.deleted_keys.books = [];
+
+    cleanCodes.forEach(code => {
+      if (!this.data.deleted_keys.books.includes(code)) {
+        this.data.deleted_keys.books.push(code);
+      }
+    });
+
+    this.data.books = (this.data.books || []).filter(b => !cleanCodes.includes(String(b.book_code).trim().toLowerCase()));
+
+    this.addAuditLog('ทะเบียนเล่ม', 'ลบเล่มกลุ่ม', `ลบทะเบียนเล่มจำนวน ${bookCodes.length} รายการ`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
   // --- Loan CRUD ---
   async addLoan(loanData) {
     if (!loanData.loan_code) throw new Error('ต้องระบุเลขคำขอ (loan_code)');
+    const cleanCode = String(loanData.loan_code).trim();
+
+    const existing = (this.data.loans || []).find(l => String(l.loan_code).trim().toLowerCase() === cleanCode.toLowerCase());
+    if (existing) {
+      console.warn('[DB] Duplicate loan add prevented:', cleanCode);
+      return existing;
+    }
+
     const newLoan = {
       id: (this.data.loans || []).length + 1,
       ...loanData,
+      loan_code: cleanCode,
       updated_at: new Date().toISOString()
     };
     if (!this.data.loans) this.data.loans = [];
     this.data.loans.unshift(newLoan);
-    this.addAuditLog('คำขอสำเนา', 'เพิ่มคำขอ', `เพิ่มคำขอสำเนา ${loanData.loan_code}`);
+    this.addAuditLog('คำขอสำเนา', 'เพิ่มคำขอ', `เพิ่มคำขอสำเนา ${cleanCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addLoan failed:', err.message));
+    return newLoan;
   }
 
   async updateLoan(loanCode, loanData) {
@@ -1042,7 +1404,8 @@ class RelationalDatabase {
     };
     this.addAuditLog('คำขอสำเนา', 'แก้ไขคำขอ', `แก้ไขคำขอ ${loanCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'update');
+    this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateLoan failed:', err.message));
+    return this.data.loans[idx];
   }
 
   async deleteLoan(loanCode, loanId) {
@@ -1058,19 +1421,49 @@ class RelationalDatabase {
     return await this.syncToGoogleSheets(null, 'delete');
   }
 
+  async deleteLoansBatch(loanCodes) {
+    if (!Array.isArray(loanCodes) || loanCodes.length === 0) return null;
+    const cleanCodes = loanCodes.map(c => String(c).trim().toLowerCase());
+
+    this.cleanupDeletedKeys();
+    if (!this.data.deleted_keys.loans) this.data.deleted_keys.loans = [];
+
+    cleanCodes.forEach(code => {
+      if (!this.data.deleted_keys.loans.includes(code)) {
+        this.data.deleted_keys.loans.push(code);
+      }
+    });
+
+    this.data.loans = (this.data.loans || []).filter(l => !cleanCodes.includes(String(l.loan_code).trim().toLowerCase()));
+
+    this.addAuditLog('คำขอสำเนา', 'ลบคำขอกลุ่ม', `ลบรายการคำขอสำเนาจำนวน ${loanCodes.length} รายการ`);
+    this.saveLocal();
+    return await this.syncToGoogleSheets(null, 'delete');
+  }
+
   // --- Location CRUD ---
   async addLocation(locData) {
     if (!locData.code) throw new Error('ต้องระบุรหัสตำแหน่ง (code)');
+    const cleanCode = String(locData.code).trim();
+
+    const existing = (this.data.storage_locations || []).find(l => String(l.code).trim().toLowerCase() === cleanCode.toLowerCase());
+    if (existing) {
+      console.warn('[DB] Duplicate location add prevented:', cleanCode);
+      return existing;
+    }
+
     const newLoc = {
       id: (this.data.storage_locations || []).length + 1,
       ...locData,
+      code: cleanCode,
       updated_at: new Date().toISOString()
     };
     if (!this.data.storage_locations) this.data.storage_locations = [];
     this.data.storage_locations.unshift(newLoc);
-    this.addAuditLog('สถานที่จัดเก็บ', 'เพิ่มตำแหน่ง', `เพิ่มตำแหน่ง ${locData.code}`);
+    this.addAuditLog('สถานที่จัดเก็บ', 'เพิ่มตำแหน่ง', `เพิ่มตำแหน่ง ${cleanCode}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addLocation failed:', err.message));
+    return newLoc;
   }
 
   async updateLocation(code, locData) {
@@ -1084,7 +1477,8 @@ class RelationalDatabase {
     };
     this.addAuditLog('สถานที่จัดเก็บ', 'แก้ไขตำแหน่ง', `แก้ไขตำแหน่ง ${code}`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'update');
+    this.syncToGoogleSheets(null, 'update').catch(err => console.warn('[DB] Background sync updateLocation failed:', err.message));
+    return this.data.storage_locations[idx];
   }
 
   async deleteLocation(code) {
@@ -1103,17 +1497,27 @@ class RelationalDatabase {
   // --- User CRUD ---
   async addUser(userData) {
     if (!userData.username) throw new Error('ต้องระบุชื่อผู้ใช้งาน (username)');
+    const cleanUsername = String(userData.username).trim();
+    if (!cleanUsername) throw new Error('ต้องระบุชื่อผู้ใช้งาน (username)');
+
+    const exists = (this.data.users || []).some(u => String(u.username).trim().toLowerCase() === cleanUsername.toLowerCase());
+    if (exists) {
+      throw new Error(`ชื่อผู้ใช้งาน "${cleanUsername}" มีในระบบแล้ว กรุณาใช้ Username อื่น (เช่น ${cleanUsername}2, ${cleanUsername}_admin)`);
+    }
+
     const newUser = {
       id: (this.data.users || []).length + 1,
-      password_hash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+      password_hash: userData.password_hash || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
       ...userData,
+      username: cleanUsername,
       updated_at: new Date().toISOString()
     };
     if (!this.data.users) this.data.users = [];
     this.data.users.unshift(newUser);
-    this.addAuditLog('ผู้ใช้งาน', 'เพิ่มผู้ใช้', `สร้างบัญชีผู้ใช้ ${userData.username}`);
+    this.addAuditLog('ผู้ใช้งาน', 'เพิ่มผู้ใช้', `สร้างบัญชีผู้ใช้ ${cleanUsername} (บทบาท: ${userData.role_code || 'staff'})`);
     this.saveLocal();
-    return await this.syncToGoogleSheets(null, 'create');
+    this.syncToGoogleSheets(null, 'create').catch(err => console.warn('[DB] Background sync addUser failed:', err.message));
+    return newUser;
   }
 
   async updateUser(username, userData) {

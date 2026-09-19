@@ -179,19 +179,13 @@ const locationsView = {
           'ยืนยันการลบตำแหน่งจัดเก็บ',
           `คุณต้องการลบตำแหน่งจัดเก็บ <b>${code}</b> ใช่หรือไม่?`,
           async () => {
-            window.db.deleteLocation(code);
-            window.utils.showToast('กำลังซิงก์การลบลง Google Sheets...', 'info');
+            btn.disabled = true;
             try {
-              await window.db.syncToGoogleSheets();
-              window.utils.showToast('ลบตำแหน่งจัดเก็บและซิงก์ Google Sheets เรียบร้อยแล้ว', 'success');
+              await window.db.deleteLocation(code);
+              window.utils.showToast('ลบตำแหน่งจัดเก็บเรียบร้อยแล้ว', 'success');
+              this.refreshPage();
             } catch (err) {
-              console.warn('Sync locations on delete:', err);
-              window.utils.showToast('ลบข้อมูลในเครื่องเรียบร้อยแล้ว', 'warning');
-            }
-            const mainContent = document.getElementById('main-content');
-            if (mainContent) {
-              mainContent.innerHTML = this.render();
-              this.initEvents();
+              window.utils.showToast(`เกิดข้อผิดพลาดในการลบ: ${err.message}`, 'danger');
             }
           }
         );
@@ -251,7 +245,7 @@ const locationsView = {
         {
           text: isEdit ? 'บันทึกการแก้ไข' : 'สร้าง Location Code',
           class: 'btn btn-primary',
-          onClick: () => {
+          onClick: async () => {
             const b = document.getElementById('loc-building').value.trim();
             const r = document.getElementById('loc-room').value.trim();
             const c = document.getElementById('loc-cabinet').value.trim();
@@ -259,44 +253,43 @@ const locationsView = {
             const f = document.getElementById('loc-folder').value.trim();
             const desc = document.getElementById('loc-desc').value.trim();
 
-            if (isEdit) {
-              locToEdit.building = b;
-              locToEdit.room = r;
-              locToEdit.cabinet = c;
-              locToEdit.shelf = s;
-              locToEdit.folder = f;
-              locToEdit.description = desc;
-              locToEdit.updated_at = new Date().toISOString();
-              window.db.addAuditLog('สถานที่จัดเก็บ', 'แก้ไขตำแหน่ง', `แก้ไขตำแหน่ง ${locToEdit.code}`);
-              window.db.save();
-              window.db.syncToGoogleSheets().catch(err => console.warn('Sync locations:', err));
-              window.utils.showToast('แก้ไขข้อมูลตำแหน่งจัดเก็บเรียบร้อยแล้ว', 'success');
-              if (window.router) window.router.handleRoute();
-              return;
+            if (!b || !r || !c || !s || !f) {
+              window.utils.showToast('กรุณากรอกข้อมูลสถานที่จัดเก็บให้ครบถ้วน', 'danger');
+              return false;
             }
 
             const cClean = c.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'A01';
             const sClean = s.replace(/[^0-9]/g, '').padStart(2, '0') || '01';
             const fClean = f.replace(/[^0-9]/g, '').padStart(2, '0') || '01';
-            const code = `LOC-${cClean}-${sClean}-${fClean}`;
+            const code = isEdit ? locToEdit.code : `LOC-${cClean}-${sClean}-${fClean}`;
 
-            window.db.data.storage_locations.push({
-              id: window.db.data.storage_locations.length + 1,
+            const locData = {
               code: code,
               building: b,
               room: r,
               cabinet: c,
               shelf: s,
               folder: f,
-              description: desc,
-              updated_at: new Date().toISOString()
-            });
+              description: desc
+            };
 
-            window.db.addAuditLog('สถานที่จัดเก็บ', 'เพิ่มตำแหน่ง', `เพิ่มตำแหน่งใหม่ ${code}`);
-            window.db.save();
-            window.db.syncToGoogleSheets().catch(err => console.warn('Sync locations:', err));
-            window.utils.showToast(`สร้าง Location Code: ${code} สำเร็จ`, 'success');
-            if (window.router) window.router.handleRoute();
+            const modalSubmitBtn = document.querySelector('.modal-footer .btn-primary');
+            if (modalSubmitBtn) { modalSubmitBtn.disabled = true; modalSubmitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึกลง Google Sheets...'; }
+
+            try {
+              if (isEdit) {
+                await window.db.updateLocation(code, locData);
+                window.utils.showToast('แก้ไขข้อมูลตำแหน่งจัดเก็บเรียบร้อยแล้ว', 'success');
+              } else {
+                await window.db.addLocation(locData);
+                window.utils.showToast(`สร้าง Location Code: ${code} สำเร็จ`, 'success');
+              }
+              window.utils.closeModal();
+              this.refreshPage();
+            } catch (err) {
+              window.utils.showToast(`บันทึกไม่สำเร็จ: ${err.message}`, 'danger');
+              if (modalSubmitBtn) { modalSubmitBtn.disabled = false; modalSubmitBtn.innerHTML = isEdit ? 'บันทึกการแก้ไข' : 'สร้าง Location Code'; }
+            }
           }
         }
       ]

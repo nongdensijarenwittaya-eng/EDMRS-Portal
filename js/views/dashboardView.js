@@ -94,7 +94,7 @@ const dashboardView = {
           <div class="kpi-info">
             <span class="kpi-label">เอกสาร ปพ. ทั้งหมด</span>
             <span class="kpi-value">${totalDocs.toLocaleString()}</span>
-            <span class="kpi-subtext">ฉบับดิจิทัล & เล่ม</span>
+            <span class="kpi-subtext">รายการเอกสารในระบบ</span>
           </div>
         </a>
 
@@ -125,7 +125,7 @@ const dashboardView = {
           </div>
         </a>
 
-        <a href="#books" class="kpi-card" title="คลิกเพื่อไปที่ทะเบียนเล่มเอกสาร & อัลบั้ม">
+        <a href="#books" class="kpi-card" title="คลิกเพื่อไปที่ทะเบียนเล่มเอกสาร">
           <div class="kpi-icon cyan"><i class="fa-solid fa-book-bookmark"></i></div>
           <div class="kpi-info">
             <span class="kpi-label">จำนวนเล่ม / ตู้</span>

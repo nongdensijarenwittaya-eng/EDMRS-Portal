@@ -279,38 +279,59 @@ const usersView = {
 
   openAddUserModal(userToEdit = null) {
     const isEdit = !!userToEdit;
-    const uVal = isEdit ? (userToEdit.username || '') : '';
+    const existingUsers = (window.db && window.db.data && Array.isArray(window.db.data.users)) ? window.db.data.users : [];
+    
+    // Auto suggest username if adding new
+    let suggestedUsername = '';
+    if (!isEdit) {
+      if (!existingUsers.some(u => String(u.username || '').trim().toLowerCase() === 'admin')) {
+        suggestedUsername = 'admin';
+      } else {
+        let count = 2;
+        while (existingUsers.some(u => String(u.username || '').trim().toLowerCase() === `admin${count}`)) {
+          count++;
+        }
+        suggestedUsername = `admin${count}`;
+      }
+    }
+
+    const uVal = isEdit ? (userToEdit.username || '') : suggestedUsername;
     const tVal = isEdit ? (userToEdit.title || 'นาย') : 'นาย';
     const fnVal = isEdit ? (userToEdit.first_name || '') : '';
     const lnVal = isEdit ? (userToEdit.last_name || '') : '';
-    const rVal = isEdit ? (userToEdit.role_code || 'staff') : 'staff';
+    const rVal = isEdit ? (userToEdit.role_code || 'super_admin') : 'super_admin';
     const emVal = isEdit ? (userToEdit.email || '') : '';
 
     const bodyHtml = `
       <form id="add-user-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label required">ชื่อผู้ใช้งาน (Username)</label>
-            <input type="text" id="modal-user-username" class="form-control" value="${uVal}" ${isEdit ? 'readonly' : 'required'} placeholder="e.g. officer01">
-          </div>
-          <div class="form-group">
-            <label class="form-label ${isEdit ? '' : 'required'}">รหัสผ่าน ${isEdit ? '(เว้นว่างหากไม่เปลี่ยน)' : ''}</label>
-            <input type="password" id="modal-user-pass" class="form-control" placeholder="รหัสผ่าน" ${isEdit ? '' : 'required'}>
-          </div>
+        <div style="background: var(--primary-50, #eff6ff); border: 1px solid var(--primary-200, #bfdbfe); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--primary-900, #1e3a8a);">
+          <i class="fa-solid fa-circle-info text-primary"></i> <strong>การสร้างบัญชีผู้ใช้งานระบบ:</strong> สามารถสร้างผู้ดูแลระบบ (Super Admin / Administrator) หรือเจ้าหน้าที่ ได้หลายบัญชี โดยตั้งค่าชื่อ Username ไม่ให้ซ้ำกัน (เช่น admin, admin2, officer01)
         </div>
 
         <div class="form-row">
           <div class="form-group">
+            <label class="form-label required">ชื่อผู้ใช้งาน (Username)</label>
+            <input type="text" id="modal-user-username" class="form-control" value="${uVal}" ${isEdit ? 'readonly' : 'required'} placeholder="เช่น admin2, officer01">
+            <small style="color: var(--text-muted); font-size: 0.78rem;">ต้องไม่ซ้ำกับบัญชีอื่นในระบบ</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label ${isEdit ? '' : 'required'}">รหัสผ่าน ${isEdit ? '(เว้นว่างหากไม่ต้องการเปลี่ยน)' : ''}</label>
+            <input type="password" id="modal-user-pass" class="form-control" placeholder="รหัสผ่านเข้าสู่ระบบ" ${isEdit ? '' : 'required'}>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex: 0 0 100px;">
             <label class="form-label required">คำนำหน้า</label>
-            <input type="text" id="modal-user-title" class="form-control" value="${tVal}" required>
+            <input type="text" id="modal-user-title" class="form-control" value="${tVal}" required placeholder="นาย">
           </div>
           <div class="form-group">
             <label class="form-label required">ชื่อ</label>
-            <input type="text" id="modal-user-fname" class="form-control" value="${fnVal}" required>
+            <input type="text" id="modal-user-fname" class="form-control" value="${fnVal}" required placeholder="ชื่อผู้ใช้งาน">
           </div>
           <div class="form-group">
             <label class="form-label required">นามสกุล</label>
-            <input type="text" id="modal-user-lname" class="form-control" value="${lnVal}" required>
+            <input type="text" id="modal-user-lname" class="form-control" value="${lnVal}" required placeholder="นามสกุล">
           </div>
         </div>
 
@@ -318,10 +339,10 @@ const usersView = {
           <div class="form-group">
             <label class="form-label required">สิทธิ์การใช้งาน (Role)</label>
             <select id="modal-user-role" class="form-control" required>
-              <option value="super_admin" ${rVal === 'super_admin' ? 'selected' : ''}>Super Admin (ผู้ดูแลระบบสูงสุด)</option>
-              <option value="administrator" ${rVal === 'administrator' ? 'selected' : ''}>Administrator (ผู้ดูแลระบบ)</option>
-              <option value="staff" ${rVal === 'staff' ? 'selected' : ''}>Staff (เจ้าหน้าที่ทะเบียน)</option>
-              <option value="viewer" ${rVal === 'viewer' ? 'selected' : ''}>Viewer (ผู้เข้าชม)</option>
+              <option value="super_admin" ${rVal === 'super_admin' ? 'selected' : ''}>👑 Super Admin (ผู้ดูแลระบบสูงสุด)</option>
+              <option value="administrator" ${rVal === 'administrator' ? 'selected' : ''}>🛡️ Administrator (ผู้ดูแลระบบ)</option>
+              <option value="staff" ${rVal === 'staff' ? 'selected' : ''}>📝 Staff (เจ้าหน้าที่ทะเบียน)</option>
+              <option value="viewer" ${rVal === 'viewer' ? 'selected' : ''}>👁️ Viewer (ผู้เข้าชม)</option>
             </select>
           </div>
           <div class="form-group">
@@ -338,20 +359,28 @@ const usersView = {
       [
         { text: 'ยกเลิก', class: 'btn btn-secondary' },
         {
-          text: isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชี',
+          text: isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชีผู้ใช้',
           class: 'btn btn-primary',
           onClick: async () => {
             const u = document.getElementById('modal-user-username').value.trim();
             const p = document.getElementById('modal-user-pass').value;
-            const t = document.getElementById('modal-user-title').value;
+            const t = document.getElementById('modal-user-title').value.trim();
             const fn = document.getElementById('modal-user-fname').value.trim();
             const ln = document.getElementById('modal-user-lname').value.trim();
             const r = document.getElementById('modal-user-role').value;
             const em = document.getElementById('modal-user-email').value.trim();
 
             if (!u || (!isEdit && !p) || !fn || !ln) {
-              window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน', 'danger');
+              window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (Username, ชื่อ, นามสกุล, รหัสผ่าน)', 'danger');
               return false;
+            }
+
+            if (!isEdit) {
+              const duplicate = existingUsers.find(user => String(user.username || '').trim().toLowerCase() === u.toLowerCase());
+              if (duplicate) {
+                window.utils.showToast(`ชื่อผู้ใช้งาน "${u}" มีในระบบแล้ว กรุณาใช้ Username อื่น (เช่น ${u}2, ${u}_admin)`, 'danger');
+                return false;
+              }
             }
 
             const modalSubmitBtn = document.querySelector('.modal-footer .btn-primary');
@@ -369,6 +398,10 @@ const usersView = {
                 created_at: isEdit ? userToEdit.created_at : new Date().toISOString().slice(0, 10)
               };
 
+              if (p && window.authSystem && typeof window.authSystem.hashPassword === 'function') {
+                userData.password_hash = await window.authSystem.hashPassword(p);
+              }
+
               if (isEdit) {
                 await window.db.updateUser(u, userData);
                 window.utils.showToast(`แก้ไขข้อมูลผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
@@ -377,11 +410,11 @@ const usersView = {
                 window.utils.showToast(`สร้างผู้ใช้งาน ${u} เรียบร้อยแล้ว`, 'success');
               }
 
-              window.utils.closeModal();
               this.refreshPage();
             } catch (err) {
               window.utils.showToast(`เกิดข้อผิดพลาดในการบันทึก: ${err.message}`, 'danger');
-              if (modalSubmitBtn) { modalSubmitBtn.disabled = false; modalSubmitBtn.innerHTML = isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชี'; }
+              if (modalSubmitBtn) { modalSubmitBtn.disabled = false; modalSubmitBtn.innerHTML = isEdit ? 'บันทึกการแก้ไข' : 'สร้างบัญชีผู้ใช้'; }
+              return false;
             }
           }
         }
