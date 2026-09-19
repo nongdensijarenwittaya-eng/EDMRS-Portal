@@ -138,7 +138,7 @@ const locationFinderView = {
       traceBtn.onclick = () => {
         const code = selectEl.value;
         window.location.hash = `#location-finder?code=${code}`;
-        window.location.reload();
+        if (window.router) window.router.handleRoute();
       };
     }
   }

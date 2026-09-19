@@ -88,7 +88,7 @@ const loginView = {
             sessionStorage.removeItem('has_loaded_initial');
             window._initialAppLoaded = false;
             window.location.hash = '#dashboard';
-            window.location.reload();
+            if (window.router) window.router.handleRoute();
           } else {
             if (submitBtn) {
               submitBtn.disabled = false;

@@ -122,7 +122,7 @@ class AuthSystem {
     sessionStorage.removeItem(AUTH_SESSION_KEY);
     localStorage.removeItem(AUTH_SESSION_KEY);
     window.location.hash = '#login';
-    window.location.reload();
+    if (window.router) window.router.handleRoute();
   }
 
   isAuthenticated() {

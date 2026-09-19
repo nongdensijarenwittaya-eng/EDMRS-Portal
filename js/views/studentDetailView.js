@@ -238,7 +238,7 @@ const studentDetailView = {
           () => {
             window.db.deleteDocument(code, id);
             window.utils.showToast('ลบเอกสารเรียบร้อยแล้ว', 'success');
-            window.location.reload();
+            if (window.router) window.router.handleRoute();
           }
         );
       };

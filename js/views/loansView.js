@@ -212,19 +212,19 @@ const loansView = {
     if (filterAllBtn) {
       filterAllBtn.onclick = () => {
         this.currentFilter = 'all';
-        window.location.reload();
+        if (window.router) window.router.handleRoute();
       };
     }
     if (filterPendingBtn) {
       filterPendingBtn.onclick = () => {
         this.currentFilter = 'pending';
-        window.location.reload();
+        if (window.router) window.router.handleRoute();
       };
     }
     if (filterCompletedBtn) {
       filterCompletedBtn.onclick = () => {
         this.currentFilter = 'completed';
-        window.location.reload();
+        if (window.router) window.router.handleRoute();
       };
     }
 
