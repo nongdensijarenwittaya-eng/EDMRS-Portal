@@ -175,7 +175,7 @@ class RelationalDatabase {
 
     this.fetchPromise = (async () => {
       let sheetsUrl = window.CONFIG ? window.CONFIG.getWebAppUrl() : 'https://script.google.com/macros/s/AKfycbxBJ-fRIiU0T8BqyAlZS5xrO8x5N6niAxQLkkKiAKCMCDZoaoAImKhKWHaFLn8TxEYs/exec';
-      console.log('[DB][GET] Fetching records from:', sheetsUrl);
+      if (!isSilent) console.log('[DB][GET] Fetching records from:', sheetsUrl);
 
       this.DB_STATE.fetching = true;
       this.DB_STATE.lastSyncStatus = 'fetching';
@@ -304,6 +304,9 @@ class RelationalDatabase {
       const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
       console.log(`[DB][${actionName.toUpperCase()}] Sending POST request to Google Sheets...`);
 
+      this.cleanupDeletedKeys();
+      this.autoCrossLinkData();
+
       const payload = {
         action: actionName === 'sync' ? 'sync_database' : actionName,
         requestId: requestId,
@@ -391,13 +394,28 @@ class RelationalDatabase {
    */
   autoCrossLinkData() {
     if (!this.data) return false;
+    this.cleanupDeletedKeys();
+
     const students = this.data.students || [];
     const documents = this.data.documents || [];
     const books = this.data.books || [];
 
-    const deletedStudents = ((this.data.deleted_keys && this.data.deleted_keys.students) || []).map(k => String(k).toLowerCase());
-    const deletedDocuments = ((this.data.deleted_keys && this.data.deleted_keys.documents) || []).map(k => String(k).toLowerCase());
-    const deletedBooks = ((this.data.deleted_keys && this.data.deleted_keys.books) || []).map(k => String(k).toLowerCase());
+    // Prune any active item keys from deleted_keys
+    const activeStudentKeys = new Set(students.map(s => String(s.student_id || '').trim().toLowerCase()).filter(Boolean));
+    const activeDocKeys = new Set(documents.map(d => String(d.doc_code || '').trim().toLowerCase()).filter(Boolean));
+    const activeBookKeys = new Set(books.map(b => String(b.book_code || '').trim().toLowerCase()).filter(Boolean));
+
+    if (this.data.deleted_keys) {
+      if (Array.isArray(this.data.deleted_keys.students)) {
+        this.data.deleted_keys.students = this.data.deleted_keys.students.filter(k => !activeStudentKeys.has(String(k).trim().toLowerCase()));
+      }
+      if (Array.isArray(this.data.deleted_keys.documents)) {
+        this.data.deleted_keys.documents = this.data.deleted_keys.documents.filter(k => !activeDocKeys.has(String(k).trim().toLowerCase()));
+      }
+      if (Array.isArray(this.data.deleted_keys.books)) {
+        this.data.deleted_keys.books = this.data.deleted_keys.books.filter(k => !activeBookKeys.has(String(k).trim().toLowerCase()));
+      }
+    }
 
     const studentMap = new Map();
     students.forEach(s => {
@@ -429,7 +447,6 @@ class RelationalDatabase {
       const sid = String(s.student_id || '').trim();
       if (!sid) return;
       const sKey = sid.toLowerCase();
-      if (deletedStudents.includes(sKey)) return;
 
       const fullName = `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim();
       const setNum = String(s.set_number || s.book_number || '01').trim();
@@ -468,7 +485,7 @@ class RelationalDatabase {
           existingDoc.updated_at = new Date().toISOString();
           updated = true;
         }
-      } else if (!deletedDocuments.includes(dKey)) {
+      } else {
         const newDoc = {
           id: documents.length + 1,
           doc_code: docCode,
@@ -481,6 +498,7 @@ class RelationalDatabase {
           book_code: targetBookCode,
           status: 'stored',
           location_code: locationCode,
+          _pendingSync: true,
           updated_at: new Date().toISOString()
         };
         documents.push(newDoc);
@@ -494,7 +512,7 @@ class RelationalDatabase {
       const bKey = bCode.toLowerCase();
       const nyKey = `${setNum}_${year}`.toLowerCase();
 
-      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey)) {
         const newBk = {
           id: books.length + 1,
           book_code: bCode,
@@ -505,6 +523,7 @@ class RelationalDatabase {
           end_no: '050',
           item_count: 50,
           location_code: locationCode,
+          _pendingSync: true,
           updated_at: new Date().toISOString()
         };
         books.push(newBk);
@@ -518,7 +537,7 @@ class RelationalDatabase {
     documents.forEach(d => {
       const sid = String(d.student_id || '').trim();
       const sKey = sid.toLowerCase();
-      if (sid && !studentMap.has(sKey) && !deletedStudents.includes(sKey)) {
+      if (sid && !studentMap.has(sKey)) {
         const full = d.student_name || '';
         let prefix = '';
         let firstName = full;
@@ -548,6 +567,7 @@ class RelationalDatabase {
           doc_number: d.doc_number || '001',
           set_number: d.book_number || '01',
           status: 'ปกติ',
+          _pendingSync: true,
           updated_at: new Date().toISOString()
         };
         students.push(newSt);
@@ -564,7 +584,7 @@ class RelationalDatabase {
       const bKey = bCode.toLowerCase();
       const nyKey = `${bNum}_${aYear}`.toLowerCase();
 
-      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey)) {
         const newBk = {
           id: books.length + 1,
           book_code: bCode,
@@ -575,6 +595,7 @@ class RelationalDatabase {
           end_no: '050',
           item_count: 50,
           location_code: d.location_code || 'LOC-A01-01-01',
+          _pendingSync: true,
           updated_at: new Date().toISOString()
         };
         books.push(newBk);
@@ -623,6 +644,25 @@ class RelationalDatabase {
     let hasChanges = false;
     const isDifferent = (oldArr, newArr) => JSON.stringify(oldArr || []) !== JSON.stringify(newArr || []);
 
+    const nowTime = Date.now();
+    const RECENT_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+    const isDeleted = (cat, key) => {
+      if (!this.data.deleted_keys || !Array.isArray(this.data.deleted_keys[cat])) return false;
+      const kLower = String(key || '').trim().toLowerCase();
+      return this.data.deleted_keys[cat].some(dk => String(dk || '').trim().toLowerCase() === kLower);
+    };
+
+    const isPendingOrRecent = (item, cat, keyVal) => {
+      if (!item || !keyVal || isDeleted(cat, keyVal)) return false;
+      if (item._pendingSync) return true;
+      if (item.updated_at) {
+        const t = new Date(item.updated_at).getTime();
+        if (!isNaN(t) && (nowTime - t < RECENT_THRESHOLD_MS)) return true;
+      }
+      return false;
+    };
+
     // 1. Students
     if (Array.isArray(sheetData.Students)) {
       const rows = sheetData.Students.length > 1 ? sheetData.Students.slice(1) : [];
@@ -641,8 +681,29 @@ class RelationalDatabase {
         updated_at: String(row[10] || '').trim()
       })).filter(s => s.student_id);
 
-      const pendingStudents = (this.data.students || []).filter(s => s._pendingSync && s.student_id && !parsedStudents.some(ps => ps.student_id.toLowerCase() === String(s.student_id).toLowerCase()));
-      const finalStudents = [...parsedStudents, ...pendingStudents];
+      const parsedSidSet = new Set(parsedStudents.map(s => s.student_id.toLowerCase()));
+
+      (this.data.students || []).forEach(s => {
+        if (s.student_id && parsedSidSet.has(s.student_id.toLowerCase())) {
+          delete s._pendingSync;
+        }
+      });
+
+      const mergedParsedStudents = parsedStudents.map(ps => {
+        const local = (this.data.students || []).find(s => s.student_id && s.student_id.toLowerCase() === ps.student_id.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...ps, ...local };
+        }
+        return ps;
+      });
+
+      const pendingStudents = (this.data.students || []).filter(s =>
+        s.student_id &&
+        !parsedSidSet.has(s.student_id.toLowerCase()) &&
+        isPendingOrRecent(s, 'students', s.student_id)
+      );
+
+      const finalStudents = [...mergedParsedStudents, ...pendingStudents];
 
       if (isDifferent(this.data.students, finalStudents)) {
         this.data.students = finalStudents;
@@ -676,8 +737,29 @@ class RelationalDatabase {
         };
       }).filter(d => d.doc_code);
 
-      const pendingDocs = (this.data.documents || []).filter(d => d._pendingSync && d.doc_code && !parsedDocs.some(pd => pd.doc_code.toLowerCase() === String(d.doc_code).toLowerCase()));
-      const finalDocs = [...parsedDocs, ...pendingDocs];
+      const parsedCodeSet = new Set(parsedDocs.map(d => d.doc_code.toLowerCase()));
+
+      (this.data.documents || []).forEach(d => {
+        if (d.doc_code && parsedCodeSet.has(d.doc_code.toLowerCase())) {
+          delete d._pendingSync;
+        }
+      });
+
+      const mergedParsedDocs = parsedDocs.map(pd => {
+        const local = (this.data.documents || []).find(d => d.doc_code && d.doc_code.toLowerCase() === pd.doc_code.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...pd, ...local };
+        }
+        return pd;
+      });
+
+      const pendingDocs = (this.data.documents || []).filter(d =>
+        d.doc_code &&
+        !parsedCodeSet.has(d.doc_code.toLowerCase()) &&
+        isPendingOrRecent(d, 'documents', d.doc_code)
+      );
+
+      const finalDocs = [...mergedParsedDocs, ...pendingDocs];
 
       if (isDifferent(this.data.documents, finalDocs)) {
         this.data.documents = finalDocs;
@@ -701,8 +783,29 @@ class RelationalDatabase {
         updated_at: String(row[8] || '').trim()
       })).filter(b => b.book_code);
 
-      const pendingBooks = (this.data.books || []).filter(b => b._pendingSync && b.book_code && !parsedBooks.some(pb => pb.book_code.toLowerCase() === String(b.book_code).toLowerCase()));
-      const finalBooks = [...parsedBooks, ...pendingBooks];
+      const parsedBookSet = new Set(parsedBooks.map(b => b.book_code.toLowerCase()));
+
+      (this.data.books || []).forEach(b => {
+        if (b.book_code && parsedBookSet.has(b.book_code.toLowerCase())) {
+          delete b._pendingSync;
+        }
+      });
+
+      const mergedParsedBooks = parsedBooks.map(pb => {
+        const local = (this.data.books || []).find(b => b.book_code && b.book_code.toLowerCase() === pb.book_code.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...pb, ...local };
+        }
+        return pb;
+      });
+
+      const pendingBooks = (this.data.books || []).filter(b =>
+        b.book_code &&
+        !parsedBookSet.has(b.book_code.toLowerCase()) &&
+        isPendingOrRecent(b, 'books', b.book_code)
+      );
+
+      const finalBooks = [...mergedParsedBooks, ...pendingBooks];
 
       if (isDifferent(this.data.books, finalBooks)) {
         this.data.books = finalBooks;
@@ -728,8 +831,29 @@ class RelationalDatabase {
         updated_at: String(row[10] || '').trim()
       })).filter(l => l.loan_code);
 
-      const pendingLoans = (this.data.loans || []).filter(l => l._pendingSync && l.loan_code && !parsedLoans.some(pl => pl.loan_code.toLowerCase() === String(l.loan_code).toLowerCase()));
-      const finalLoans = [...parsedLoans, ...pendingLoans];
+      const parsedLoanSet = new Set(parsedLoans.map(l => l.loan_code.toLowerCase()));
+
+      (this.data.loans || []).forEach(l => {
+        if (l.loan_code && parsedLoanSet.has(l.loan_code.toLowerCase())) {
+          delete l._pendingSync;
+        }
+      });
+
+      const mergedParsedLoans = parsedLoans.map(pl => {
+        const local = (this.data.loans || []).find(l => l.loan_code && l.loan_code.toLowerCase() === pl.loan_code.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...pl, ...local };
+        }
+        return pl;
+      });
+
+      const pendingLoans = (this.data.loans || []).filter(l =>
+        l.loan_code &&
+        !parsedLoanSet.has(l.loan_code.toLowerCase()) &&
+        isPendingOrRecent(l, 'loans', l.loan_code)
+      );
+
+      const finalLoans = [...mergedParsedLoans, ...pendingLoans];
 
       if (isDifferent(this.data.loans, finalLoans)) {
         this.data.loans = finalLoans;
@@ -752,8 +876,29 @@ class RelationalDatabase {
         updated_at: String(row[7] || '').trim()
       })).filter(l => l.code);
 
-      const pendingLocs = (this.data.storage_locations || []).filter(l => l._pendingSync && l.code && !parsedLocs.some(pl => pl.code.toLowerCase() === String(l.code).toLowerCase()));
-      const finalLocs = [...parsedLocs, ...pendingLocs];
+      const parsedLocSet = new Set(parsedLocs.map(l => l.code.toLowerCase()));
+
+      (this.data.storage_locations || []).forEach(l => {
+        if (l.code && parsedLocSet.has(l.code.toLowerCase())) {
+          delete l._pendingSync;
+        }
+      });
+
+      const mergedParsedLocs = parsedLocs.map(pl => {
+        const local = (this.data.storage_locations || []).find(l => l.code && l.code.toLowerCase() === pl.code.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...pl, ...local };
+        }
+        return pl;
+      });
+
+      const pendingLocs = (this.data.storage_locations || []).filter(l =>
+        l.code &&
+        !parsedLocSet.has(l.code.toLowerCase()) &&
+        isPendingOrRecent(l, 'storage_locations', l.code)
+      );
+
+      const finalLocs = [...mergedParsedLocs, ...pendingLocs];
 
       if (isDifferent(this.data.storage_locations, finalLocs)) {
         this.data.storage_locations = finalLocs;
@@ -777,8 +922,29 @@ class RelationalDatabase {
         updated_at: String(row[8] || '').trim()
       })).filter(u => u.username);
 
-      const pendingUsers = (this.data.users || []).filter(u => u._pendingSync && u.username && !parsedUsers.some(pu => pu.username.toLowerCase() === String(u.username).toLowerCase()));
-      const finalUsers = [...parsedUsers, ...pendingUsers];
+      const parsedUserSet = new Set(parsedUsers.map(u => u.username.toLowerCase()));
+
+      (this.data.users || []).forEach(u => {
+        if (u.username && parsedUserSet.has(u.username.toLowerCase())) {
+          delete u._pendingSync;
+        }
+      });
+
+      const mergedParsedUsers = parsedUsers.map(pu => {
+        const local = (this.data.users || []).find(u => u.username && u.username.toLowerCase() === pu.username.toLowerCase());
+        if (local && local._pendingSync) {
+          return { ...pu, ...local };
+        }
+        return pu;
+      });
+
+      const pendingUsers = (this.data.users || []).filter(u =>
+        u.username &&
+        !parsedUserSet.has(u.username.toLowerCase()) &&
+        isPendingOrRecent(u, 'users', u.username)
+      );
+
+      const finalUsers = [...mergedParsedUsers, ...pendingUsers];
 
       if (isDifferent(this.data.users, finalUsers)) {
         this.data.users = finalUsers;
@@ -804,11 +970,14 @@ class RelationalDatabase {
     // Reset deleted keys as we are now in sync with Google Sheets
     this.data.deleted_keys = { users: [], students: [], documents: [], books: [], loans: [], storage_locations: [] };
 
-    this.autoCrossLinkData();
+    const crossLinked = this.autoCrossLinkData();
     try {
       localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(this.data));
     } catch (e) {
       console.warn('[DB] Failed to save LocalStorage cache:', e);
+    }
+    if (crossLinked) {
+      this.syncToGoogleSheets().catch(err => console.warn('[DB] Auto sync failed:', err.message));
     }
 
     return hasChanges;
@@ -1073,11 +1242,12 @@ class RelationalDatabase {
       book_code: bookCode,
       status: 'stored',
       location_code: locationCode,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
 
     if (existingIdx !== -1) {
-      this.data.documents[existingIdx] = { ...this.data.documents[existingIdx], ...updatedDoc };
+      this.data.documents[existingIdx] = { ...this.data.documents[existingIdx], ...updatedDoc, _pendingSync: true };
     } else {
       this.data.documents.unshift(updatedDoc);
     }
@@ -1094,6 +1264,7 @@ class RelationalDatabase {
       this.data.students[existingIdx] = {
         ...this.data.students[existingIdx],
         ...studentData,
+        _pendingSync: true,
         updated_at: new Date().toISOString()
       };
       this.ensureStudentDocumentLinked(this.data.students[existingIdx]);
@@ -1107,6 +1278,7 @@ class RelationalDatabase {
       id: (this.data.students || []).length + 1,
       ...studentData,
       student_id: cleanSid,
+      _pendingSync: true,
       updated_at: now
     };
     if (!this.data.students) this.data.students = [];
@@ -1129,6 +1301,7 @@ class RelationalDatabase {
     this.data.students[idx] = {
       ...this.data.students[idx],
       ...studentData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
 
@@ -1239,6 +1412,7 @@ class RelationalDatabase {
       id: (this.data.documents || []).length + 1,
       ...docData,
       doc_code: cleanCode,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     if (!this.data.documents) this.data.documents = [];
@@ -1256,6 +1430,7 @@ class RelationalDatabase {
     this.data.documents[idx] = {
       ...this.data.documents[idx],
       ...docData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     const updatedDoc = this.data.documents[idx];
@@ -1292,6 +1467,7 @@ class RelationalDatabase {
           doc_number: updatedDoc.doc_number || this.data.students[stIdx].doc_number,
           set_number: updatedDoc.book_number || this.data.students[stIdx].set_number,
           academic_year: updatedDoc.academic_year || this.data.students[stIdx].academic_year,
+          _pendingSync: true,
           updated_at: new Date().toISOString()
         };
       }
@@ -1409,6 +1585,7 @@ class RelationalDatabase {
       id: (this.data.books || []).length + 1,
       ...bookData,
       book_code: cleanCode,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     if (!this.data.books) this.data.books = [];
@@ -1430,6 +1607,7 @@ class RelationalDatabase {
     this.data.books[idx] = {
       ...this.data.books[idx],
       ...bookData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     const updatedBook = this.data.books[idx];
@@ -1446,6 +1624,7 @@ class RelationalDatabase {
         if (newYear) d.academic_year = newYear;
         if (updatedBook.doc_type_code) d.doc_type_code = updatedBook.doc_type_code;
         if (updatedBook.location_code) d.location_code = updatedBook.location_code;
+        d._pendingSync = true;
         d.updated_at = new Date().toISOString();
       }
     });
@@ -1456,6 +1635,7 @@ class RelationalDatabase {
       if (sNumMatch) {
         if (newNum) s.set_number = newNum;
         if (newYear) s.academic_year = newYear;
+        s._pendingSync = true;
         s.updated_at = new Date().toISOString();
       }
     });
@@ -1657,6 +1837,7 @@ class RelationalDatabase {
       id: (this.data.loans || []).length + 1,
       ...loanData,
       loan_code: cleanCode,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     if (!this.data.loans) this.data.loans = [];
@@ -1674,6 +1855,7 @@ class RelationalDatabase {
     this.data.loans[idx] = {
       ...this.data.loans[idx],
       ...loanData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     this.addAuditLog('คำขอสำเนา', 'แก้ไขคำขอ', `แก้ไขคำขอ ${loanCode}`);
@@ -1730,6 +1912,7 @@ class RelationalDatabase {
       id: (this.data.storage_locations || []).length + 1,
       ...locData,
       code: cleanCode,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     if (!this.data.storage_locations) this.data.storage_locations = [];
@@ -1747,6 +1930,7 @@ class RelationalDatabase {
     this.data.storage_locations[idx] = {
       ...this.data.storage_locations[idx],
       ...locData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     this.addAuditLog('สถานที่จัดเก็บ', 'แก้ไขตำแหน่ง', `แก้ไขตำแหน่ง ${code}`);
@@ -1784,6 +1968,7 @@ class RelationalDatabase {
       password_hash: userData.password_hash || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
       ...userData,
       username: cleanUsername,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     if (!this.data.users) this.data.users = [];
@@ -1801,6 +1986,7 @@ class RelationalDatabase {
     this.data.users[idx] = {
       ...this.data.users[idx],
       ...userData,
+      _pendingSync: true,
       updated_at: new Date().toISOString()
     };
     this.addAuditLog('ผู้ใช้งาน', 'แก้ไขผู้ใช้', `แก้ไขบัญชีผู้ใช้ ${username}`);

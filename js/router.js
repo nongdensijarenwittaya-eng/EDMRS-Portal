@@ -138,22 +138,6 @@ class AppRouter {
 
     this.updateActiveNav(routeName);
     this.updateBreadcrumb(routeName, params);
-
-    // Silent Instant Sync on Route Change
-    if (window.db && window.authSystem && window.authSystem.isAuthenticated() && !window.db.DB_STATE.fetching) {
-      window.db.syncFromGoogleSheets(null, true).then(res => {
-        if (res && res.hasChanges) {
-          const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-          if (activeTag !== 'input' && activeTag !== 'select' && activeTag !== 'textarea') {
-            const currentView = this.getRouteView(routeName);
-            if (mainContent && currentView) {
-              mainContent.innerHTML = currentView.render(params);
-              if (currentView.initEvents) currentView.initEvents(params);
-            }
-          }
-        }
-      }).catch(() => {});
-    }
   }
 
   updateActiveNav(routeName) {

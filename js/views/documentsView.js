@@ -4,6 +4,8 @@
    ========================================================================== */
 
 const documentsView = {
+  currentPage: 1,
+  pageSize: 10,
   filterState: {
     search: '',
     doc_type_code: '',
@@ -24,7 +26,14 @@ const documentsView = {
       this.filterState.search = '';
     }
 
-    const docs = this.getFilteredDocuments();
+    const allFilteredDocs = this.getFilteredDocuments();
+    const totalDocs = allFilteredDocs.length;
+    const totalPages = Math.ceil(totalDocs / this.pageSize) || 1;
+    if (this.currentPage > totalPages) this.currentPage = totalPages;
+
+    const startIndex = (this.currentPage - 1) * this.pageSize;
+    const docs = allFilteredDocs.slice(startIndex, startIndex + this.pageSize);
+
     const docTypes = window.db.data.document_types || [];
     const allDocsData = (window.db && window.db.data && window.db.data.documents) ? window.db.data.documents : [];
     const academicYearsList = (window.db && window.db.data && window.db.data.academic_years) ? window.db.data.academic_years : [];
@@ -150,6 +159,34 @@ const documentsView = {
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        <div class="pagination-container" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>แสดง ${totalDocs ? startIndex + 1 : 0} ถึง ${Math.min(startIndex + this.pageSize, totalDocs)} จากทั้งหมด ${totalDocs} รายการ</span>
+            <div style="display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 1rem;">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">จำนวนต่อหน้า:</span>
+              <select id="doc-page-size-select" class="form-control" style="width: auto; padding: 0.2rem 0.5rem; font-size: 0.85rem; height: auto;">
+                <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10 รายการ</option>
+                <option value="25" ${this.pageSize === 25 ? 'selected' : ''}>25 รายการ</option>
+                <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50 รายการ</option>
+                <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100 รายการ</option>
+                <option value="500" ${this.pageSize === 500 ? 'selected' : ''}>500 รายการ</option>
+                <option value="1000" ${this.pageSize === 1000 ? 'selected' : ''}>1,000 รายการ</option>
+                <option value="999999" ${this.pageSize >= 999999 ? 'selected' : ''}>♾️ แสดงทั้งหมด (ไม่จำกัด)</option>
+              </select>
+            </div>
+          </div>
+          <div class="pagination-controls">
+            <button class="page-btn" id="prev-doc-page-btn" ${this.currentPage === 1 ? 'disabled' : ''}>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span style="font-size: 0.85rem; padding: 0 0.5rem;">หน้า ${this.currentPage} / ${totalPages}</span>
+            <button class="page-btn" id="next-doc-page-btn" ${this.currentPage === totalPages ? 'disabled' : ''}>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
       </div>
     `;
   },
@@ -185,14 +222,42 @@ const documentsView = {
     const filterType = document.getElementById('doc-filter-type');
     const filterYear = document.getElementById('doc-filter-year');
     const filterStatus = document.getElementById('doc-filter-status');
+    const pageSizeSelect = document.getElementById('doc-page-size-select');
+    const prevBtn = document.getElementById('prev-doc-page-btn');
+    const nextBtn = document.getElementById('next-doc-page-btn');
 
     const updateFilters = () => {
       this.filterState.search = searchInput ? searchInput.value : '';
       this.filterState.doc_type_code = filterType ? filterType.value : '';
       this.filterState.academic_year = filterYear ? filterYear.value : '';
       this.filterState.status = filterStatus ? filterStatus.value : '';
+      this.currentPage = 1;
       this.refreshTable();
     };
+
+    if (pageSizeSelect) {
+      pageSizeSelect.onchange = (e) => {
+        this.pageSize = parseInt(e.target.value, 10) || 10;
+        this.currentPage = 1;
+        this.refreshTable();
+      };
+    }
+
+    if (prevBtn) {
+      prevBtn.onclick = () => {
+        if (this.currentPage > 1) {
+          this.currentPage--;
+          this.refreshTable();
+        }
+      };
+    }
+
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        this.currentPage++;
+        this.refreshTable();
+      };
+    }
 
     if (searchInput) searchInput.oninput = updateFilters;
     if (filterType) filterType.onchange = updateFilters;

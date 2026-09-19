@@ -193,17 +193,23 @@ function initAppShell() {
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
 
-  // Fast Background Auto-Sync Poll (Check Google Sheets for live edits/adds/deletes every 3 seconds)
+  // Background Auto-Sync Poll (Check Google Sheets for live edits/adds/deletes every 30 seconds)
   setInterval(async () => {
     if (window.authSystem && window.authSystem.isAuthenticated()) {
       if (window.db && !window.db.DB_STATE.saving && !window.db.DB_STATE.fetching && !window.db.googleSyncDisabled) {
         try {
           const res = await window.db.syncFromGoogleSheets(null, true);
           if (res && res.hasChanges) {
-            console.log('[AUTO-SYNC] Google Sheets data updated live - re-rendering active view');
+            console.log('[AUTO-SYNC] Google Sheets data updated live - updating active view');
             const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
             if (activeTag !== 'input' && activeTag !== 'select' && activeTag !== 'textarea' && window.router) {
-              window.router.handleRoute();
+              const { routeName, params } = window.router.parseHash();
+              const view = window.router.getRouteView(routeName);
+              const mainContent = document.getElementById('main-content');
+              if (mainContent && view) {
+                mainContent.innerHTML = view.render(params);
+                if (view.initEvents) view.initEvents(params);
+              }
             }
           }
         } catch (e) {
@@ -211,17 +217,23 @@ function initAppShell() {
         }
       }
     }
-  }, 3000);
+  }, 30000);
 
   // Instant Auto-Sync on Tab Focus / Visibility Change
   const triggerInstantSync = async () => {
-    if (window.authSystem && window.authSystem.isAuthenticated() && window.db && !window.db.DB_STATE.fetching) {
+    if (window.authSystem && window.authSystem.isAuthenticated() && window.db && !window.db.DB_STATE.fetching && !window.db.DB_STATE.saving && !window.db.googleSyncDisabled) {
       try {
         const res = await window.db.syncFromGoogleSheets(null, true);
         if (res && res.hasChanges && window.router) {
           const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
           if (activeTag !== 'input' && activeTag !== 'select' && activeTag !== 'textarea') {
-            window.router.handleRoute();
+            const { routeName, params } = window.router.parseHash();
+            const view = window.router.getRouteView(routeName);
+            const mainContent = document.getElementById('main-content');
+            if (mainContent && view) {
+              mainContent.innerHTML = view.render(params);
+              if (view.initEvents) view.initEvents(params);
+            }
           }
         }
       } catch (e) {}

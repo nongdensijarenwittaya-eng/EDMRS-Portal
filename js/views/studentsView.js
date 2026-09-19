@@ -161,10 +161,12 @@ const studentsView = {
               <span style="font-size: 0.85rem; color: var(--text-muted);">จำนวนต่อหน้า:</span>
               <select id="student-page-size-select" class="form-control" style="width: auto; padding: 0.2rem 0.5rem; font-size: 0.85rem; height: auto;">
                 <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10 รายการ</option>
-                <option value="15" ${this.pageSize === 15 ? 'selected' : ''}>15 รายการ</option>
                 <option value="25" ${this.pageSize === 25 ? 'selected' : ''}>25 รายการ</option>
                 <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50 รายการ</option>
                 <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100 รายการ</option>
+                <option value="500" ${this.pageSize === 500 ? 'selected' : ''}>500 รายการ</option>
+                <option value="1000" ${this.pageSize === 1000 ? 'selected' : ''}>1,000 รายการ</option>
+                <option value="999999" ${this.pageSize >= 999999 ? 'selected' : ''}>♾️ แสดงทั้งหมด (ไม่จำกัด)</option>
               </select>
             </div>
           </div>

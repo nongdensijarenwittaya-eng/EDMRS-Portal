@@ -13,9 +13,22 @@ function onOpen() {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu("📚 EDMRS Tools")
       .addItem("⚡ สร้างแท็บและคอลัมน์ทั้งหมดอัตโนมัติ (Init Structure)", "initSheetsStructure")
+      .addItem("🔄 ซิงค์และเชื่อมโยงข้อมูลทุกแท็บ (Auto Cross-Link All Sheets)", "menuAutoCrossLink")
       .addToUi();
   } catch (e) {}
   initSheetsStructure();
+}
+
+/**
+ * Menu handler to manually trigger full 3-way cross-linking across all sheets
+ */
+function menuAutoCrossLink() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  autoCrossLinkSheets(ss);
+  SpreadsheetApp.flush();
+  try {
+    SpreadsheetApp.getUi().alert("✅ ซิงค์และเชื่อมโยงข้อมูลทุกชีท (Students, Documents, Books) เรียบร้อยแล้ว!");
+  } catch(e) {}
 }
 
 /**
@@ -146,6 +159,54 @@ function recordDeletedKeys(ss, deletedKeysObj, existingMap) {
 }
 
 /**
+ * Remove active record keys from Deleted_Keys sheet when re-saved or active
+ */
+function unrecordDeletedKeys(ss, activeItemsObj) {
+  if (!activeItemsObj || typeof activeItemsObj !== "object") return;
+  ss = ss || SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Deleted_Keys");
+  if (!sheet || sheet.getLastRow() <= 1) return;
+
+  var activeMap = {};
+  var categories = Object.keys(activeItemsObj);
+  for (var c = 0; c < categories.length; c++) {
+    var cat = categories[c];
+    var catLower = String(cat).toLowerCase();
+    var list = activeItemsObj[cat];
+    if (Array.isArray(list)) {
+      activeMap[catLower] = {};
+      for (var k = 0; k < list.length; k++) {
+        var item = list[k];
+        var key = item ? (item.student_id || item.doc_code || item.book_code || item.loan_code || item.username || item.location_code || "") : "";
+        var keyLower = String(key).trim().toLowerCase();
+        if (keyLower) activeMap[catLower][keyLower] = true;
+      }
+    }
+  }
+
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+  var keptRows = [];
+  var hasRemoved = false;
+
+  for (var i = 0; i < values.length; i++) {
+    var cat = String(values[i][0] || "").trim().toLowerCase();
+    var key = String(values[i][1] || "").trim().toLowerCase();
+    if (cat && key && activeMap[cat] && activeMap[cat][key]) {
+      hasRemoved = true;
+    } else {
+      keptRows.push(values[i]);
+    }
+  }
+
+  if (hasRemoved) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).clearContent();
+    if (keptRows.length > 0) {
+      sheet.getRange(2, 1, keptRows.length, 3).setValues(keptRows);
+    }
+  }
+}
+
+/**
  * HTTP GET Request Handler - อ่านข้อมูลจาก Google Sheets (NO LOCK SERVICE FOR READS)
  */
 function doGet(e) {
@@ -217,15 +278,32 @@ function doPost(e) {
 
     if (action === "sync_database" || action === "create" || action === "update" || action === "delete") {
       var deletedKeys = contents.deleted_keys || {};
-      var masterDeletedKeys = getStoredDeletedKeys(ss);
-      recordDeletedKeys(ss, deletedKeys, masterDeletedKeys);
 
-      if (contents.users !== undefined) syncUsersSheet(ss, contents.users || [], deletedKeys.users || [], masterDeletedKeys.users || {});
-      if (contents.students !== undefined) syncStudentsSheet(ss, contents.students || [], deletedKeys.students || [], masterDeletedKeys.students || {});
-      if (contents.documents !== undefined) syncDocumentsSheet(ss, contents.documents || [], deletedKeys.documents || [], masterDeletedKeys.documents || {});
-      if (contents.books !== undefined) syncBooksSheet(ss, contents.books || [], deletedKeys.books || [], masterDeletedKeys.books || {});
-      if (contents.loans !== undefined) syncLoansSheet(ss, contents.loans || [], deletedKeys.loans || [], masterDeletedKeys.loans || {});
-      if (contents.storage_locations !== undefined) syncStorageLocationsSheet(ss, contents.storage_locations || [], deletedKeys.storage_locations || [], masterDeletedKeys.storage_locations || {});
+      // Unrecord active items from Deleted_Keys tab FIRST so active items are never blacklisted
+      unrecordDeletedKeys(ss, {
+        students: contents.students,
+        documents: contents.documents,
+        books: contents.books,
+        loans: contents.loans,
+        users: contents.users,
+        storage_locations: contents.storage_locations
+      });
+
+      var masterDeletedKeys = getStoredDeletedKeys(ss);
+
+      if (action === "delete") {
+        recordDeletedKeys(ss, deletedKeys, masterDeletedKeys);
+        masterDeletedKeys = getStoredDeletedKeys(ss);
+      }
+
+      var currentDeleted = (action === "delete") ? deletedKeys : {};
+
+      if (contents.users !== undefined) syncUsersSheet(ss, contents.users || [], currentDeleted.users || [], masterDeletedKeys.users || {});
+      if (contents.students !== undefined) syncStudentsSheet(ss, contents.students || [], currentDeleted.students || [], masterDeletedKeys.students || {});
+      if (contents.documents !== undefined) syncDocumentsSheet(ss, contents.documents || [], currentDeleted.documents || [], masterDeletedKeys.documents || {});
+      if (contents.books !== undefined) syncBooksSheet(ss, contents.books || [], currentDeleted.books || [], masterDeletedKeys.books || {});
+      if (contents.loans !== undefined) syncLoansSheet(ss, contents.loans || [], currentDeleted.loans || [], masterDeletedKeys.loans || {});
+      if (contents.storage_locations !== undefined) syncStorageLocationsSheet(ss, contents.storage_locations || [], currentDeleted.storage_locations || [], masterDeletedKeys.storage_locations || {});
       if (contents.settings !== undefined) syncSettingsSheet(ss, contents.settings || {});
 
       autoCrossLinkSheets(ss);
@@ -408,8 +486,6 @@ function syncDocumentsSheet(ss, documents, deletedKeys, masterDeletedMap) {
       }
       if (dcode) {
         var key = dcode.toLowerCase();
-        if (currentDeletedMap[key]) continue;
-
         var incomingTimeStr = d.updated_at || new Date().toISOString();
         var incomingTime = parseTime(incomingTimeStr);
         var existing = docMap[key];
@@ -494,8 +570,6 @@ function syncBooksSheet(ss, books, deletedKeys, masterDeletedMap) {
       var bcode = String(b.book_code || "").trim();
       if (bcode) {
         var key = bcode.toLowerCase();
-        if (currentDeletedMap[key]) continue;
-
         var incomingTimeStr = b.updated_at || new Date().toISOString();
         var incomingTime = parseTime(incomingTimeStr);
         var existing = bookMap[key];
@@ -581,8 +655,6 @@ function syncLoansSheet(ss, loans, deletedKeys, masterDeletedMap) {
       var lcode = String(l.loan_code || "").trim();
       if (lcode) {
         var key = lcode.toLowerCase();
-        if (currentDeletedMap[key]) continue;
-
         var statusText = (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา';
         var incomingTimeStr = l.updated_at || new Date().toISOString();
         var incomingTime = parseTime(incomingTimeStr);
@@ -752,8 +824,6 @@ function syncUsersSheet(ss, users, deletedKeys, masterDeletedMap) {
       var uname = String(u.username || "").trim();
       if (uname) {
         var key = uname.toLowerCase();
-        if (currentDeletedMap[key]) continue;
-
         var incomingTimeStr = u.updated_at || new Date().toISOString();
         var incomingTime = parseTime(incomingTimeStr);
         var existing = userMap[key];
@@ -849,7 +919,7 @@ function autoCrossLinkSheets(ss) {
       var stVals = studentsSheet.getRange(2, 1, stLastRow - 1, stCols).getValues();
       for (var r = 0; r < stVals.length; r++) {
         var sid = String(stVals[r][0] || "").trim();
-        if (sid && sid.toLowerCase() !== "รหัสนักเรียน" && (!masterDeletedKeys.students || !masterDeletedKeys.students[sid.toLowerCase()])) {
+        if (sid && sid.toLowerCase() !== "รหัสนักเรียน") {
           studentMap[sid.toLowerCase()] = {
             student_id: sid,
             prefix: String(stVals[r][1] || ""),
@@ -874,7 +944,7 @@ function autoCrossLinkSheets(ss) {
       var docVals = docsSheet.getRange(2, 1, docLastRow - 1, docCols).getValues();
       for (var r2 = 0; r2 < docVals.length; r2++) {
         var dcode = String(docVals[r2][0] || "").trim();
-        if (dcode && dcode.toLowerCase() !== "รหัสเอกสาร" && (!masterDeletedKeys.documents || !masterDeletedKeys.documents[dcode.toLowerCase()])) {
+        if (dcode && dcode.toLowerCase() !== "รหัสเอกสาร") {
           docMap[dcode.toLowerCase()] = {
             doc_code: dcode,
             student_id: String(docVals[r2][1] || "").trim(),
@@ -898,7 +968,7 @@ function autoCrossLinkSheets(ss) {
       var bkVals = booksSheet.getRange(2, 1, bkLastRow - 1, bkCols).getValues();
       for (var r3 = 0; r3 < bkVals.length; r3++) {
         var bcode = String(bkVals[r3][0] || "").trim();
-        if (bcode && bcode.toLowerCase() !== "รหัสเล่ม" && (!masterDeletedKeys.books || !masterDeletedKeys.books[bcode.toLowerCase()])) {
+        if (bcode && bcode.toLowerCase() !== "รหัสเล่ม") {
           var bItem = {
             book_code: bcode,
             doc_type_code: String(bkVals[r3][1] || ""),
@@ -931,7 +1001,7 @@ function autoCrossLinkSheets(ss) {
       var stObj = studentMap[stKeys[s]];
       var sid = String(stObj.student_id || "").trim();
       var sKey = sid.toLowerCase();
-      if (!sid || (masterDeletedKeys.students && masterDeletedKeys.students[sKey])) continue;
+      if (!sid) continue;
 
       var fullName = (stObj.prefix || "") + (stObj.first_name || "") + " " + (stObj.last_name || "");
       fullName = fullName.trim();
@@ -960,7 +1030,7 @@ function autoCrossLinkSheets(ss) {
           docFound.updated_at = timestamp;
           hasDocsAddedOrChanged = true;
         }
-      } else if (!masterDeletedKeys.documents || !masterDeletedKeys.documents[dKey]) {
+      } else {
         docMap[dKey] = {
           doc_code: dCode,
           student_id: sid,
@@ -980,7 +1050,7 @@ function autoCrossLinkSheets(ss) {
       var bKey = bCode.toLowerCase();
       var nyKey = (setNum + "_" + year).toLowerCase();
 
-      if (!bookMap[bKey] && !bookByNumberYear[nyKey] && (!masterDeletedKeys.books || !masterDeletedKeys.books[bKey])) {
+      if (!bookMap[bKey] && !bookByNumberYear[nyKey]) {
         var newBk = {
           book_code: bCode,
           doc_type_code: typeObj.name,
@@ -1005,7 +1075,7 @@ function autoCrossLinkSheets(ss) {
       var sid = String(docObj.student_id || "").trim();
       var sKey = sid.toLowerCase();
 
-      if (sid && !studentMap[sKey] && (!masterDeletedKeys.students || !masterDeletedKeys.students[sKey])) {
+      if (sid && !studentMap[sKey]) {
         var full = docObj.student_name || "";
         var prefix = "";
         var firstName = full;
@@ -1046,7 +1116,7 @@ function autoCrossLinkSheets(ss) {
       var bKey = bCode.toLowerCase();
       var nyKey = (bNum + "_" + aYear).toLowerCase();
 
-      if (!bookMap[bKey] && !bookByNumberYear[nyKey] && (!masterDeletedKeys.books || !masterDeletedKeys.books[bKey])) {
+      if (!bookMap[bKey] && !bookByNumberYear[nyKey]) {
         var newBk = {
           book_code: bCode,
           doc_type_code: typeObj.name,
@@ -1064,32 +1134,39 @@ function autoCrossLinkSheets(ss) {
       }
     }
 
-    if (hasDocsAddedOrChanged) {
-      var dcRows = [["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อ-นามสกุล", "ประเภท ปพ.", "ปีการศึกษา", "เล่มชุดที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "Updated At"]];
-      for (var dk in docMap) {
-        var dItem = docMap[dk];
-        dcRows.push([dItem.doc_code, dItem.student_id, dItem.student_name, dItem.doc_type_code, dItem.academic_year, dItem.book_number, dItem.doc_number, dItem.status, dItem.location_code, dItem.updated_at]);
-      }
-      docsSheet.getRange(1, 1, dcRows.length, 10).setValues(dcRows);
+    // Always write back Documents, Students, and Books to keep all 3 tabs 100% in sync
+    var dcRows = [["รหัสเอกสาร", "รหัสนักเรียน", "ชื่อนักเรียน", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขที่เอกสาร", "สถานะ", "Location Code", "Updated At"]];
+    for (var dk in docMap) {
+      var dItem = docMap[dk];
+      dcRows.push([dItem.doc_code, dItem.student_id, dItem.student_name, dItem.doc_type_code, dItem.academic_year, dItem.book_number, dItem.doc_number, dItem.status, dItem.location_code, dItem.updated_at]);
     }
+    var dLastRow = docsSheet.getLastRow();
+    if (dLastRow > 0) {
+      docsSheet.getRange(1, 1, Math.max(dLastRow, 1), 10).clearContent();
+    }
+    docsSheet.getRange(1, 1, dcRows.length, 10).setValues(dcRows);
 
-    if (hasStudentsAdded) {
-      var stRows = [["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ", "Updated At"]];
-      for (var sk in studentMap) {
-        var sItem = studentMap[sk];
-        stRows.push([sItem.student_id, sItem.prefix, sItem.first_name, sItem.last_name, sItem.previous_name, sItem.grade_level, sItem.academic_year, sItem.doc_number, sItem.set_number, sItem.status, sItem.updated_at]);
-      }
-      studentsSheet.getRange(1, 1, stRows.length, 11).setValues(stRows);
+    var stRows = [["รหัสนักเรียน", "คำนำหน้า", "ชื่อ", "นามสกุล", "ชื่อเดิม", "ระดับชั้น", "ปีการศึกษา", "เลขที่ใบปพ.", "ชุดที่", "สถานะ", "Updated At"]];
+    for (var sk in studentMap) {
+      var sItem = studentMap[sk];
+      stRows.push([sItem.student_id, sItem.prefix, sItem.first_name, sItem.last_name, sItem.previous_name, sItem.grade_level, sItem.academic_year, sItem.doc_number, sItem.set_number, sItem.status, sItem.updated_at]);
     }
+    var sLastRow = studentsSheet.getLastRow();
+    if (sLastRow > 0) {
+      studentsSheet.getRange(1, 1, Math.max(sLastRow, 1), 11).clearContent();
+    }
+    studentsSheet.getRange(1, 1, stRows.length, 11).setValues(stRows);
 
-    if (hasBooksAdded) {
-      var bkRows = [["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Updated At"]];
-      for (var bk in bookMap) {
-        var bItem = bkMap[bk];
-        bkRows.push([bItem.book_code, bItem.doc_type_code, bItem.academic_year, bItem.book_number, bItem.start_no, bItem.end_no, bItem.item_count, bItem.location_code, bItem.updated_at]);
-      }
-      booksSheet.getRange(1, 1, bkRows.length, 9).setValues(bkRows);
+    var bkRows = [["รหัสเล่ม", "ประเภท ปพ.", "ปีการศึกษา", "เล่มที่", "เลขเริ่มต้น", "เลขสิ้นสุด", "จำนวนรายการ", "Location Code", "Updated At"]];
+    for (var bk in bookMap) {
+      var bItem = bookMap[bk];
+      bkRows.push([bItem.book_code, bItem.doc_type_code, bItem.academic_year, bItem.book_number, bItem.start_no, bItem.end_no, bItem.item_count, bItem.location_code, bItem.updated_at]);
     }
+    var bLastRow = booksSheet.getLastRow();
+    if (bLastRow > 0) {
+      booksSheet.getRange(1, 1, Math.max(bLastRow, 1), 9).clearContent();
+    }
+    booksSheet.getRange(1, 1, bkRows.length, 9).setValues(bkRows);
 
   } catch (err) {
     Logger.log("autoCrossLinkSheets error: " + err.toString());
