@@ -481,19 +481,14 @@ const documentsView = {
           id: 'save-doc-submit-btn',
           onClick: async () => {
             const saveBtn = document.getElementById('save-doc-submit-btn');
-            const studentId = document.getElementById('modal-doc-student-id').value.trim();
-            const studentName = document.getElementById('modal-doc-student-name').value.trim();
-            const gradYear = document.getElementById('modal-doc-grad-year').value.trim();
-            const setNo = document.getElementById('modal-doc-set-no').value.trim();
-            const docNum = document.getElementById('modal-doc-number').value.trim();
-            const docTypeCode = document.getElementById('modal-doc-type').value;
-            const locationCode = document.getElementById('modal-doc-location').value;
-            const status = document.getElementById('modal-doc-status').value;
-
-            if (!gradYear || !setNo || !docNum) {
-              window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ปีการศึกษา, เล่มชุดที่, เลขที่)', 'danger');
-              return false;
-            }
+            let studentId = document.getElementById('modal-doc-student-id').value.trim();
+            let studentName = document.getElementById('modal-doc-student-name').value.trim();
+            let gradYear = document.getElementById('modal-doc-grad-year').value.trim() || '2569';
+            let setNo = document.getElementById('modal-doc-set-no').value.trim() || '01';
+            let docNum = document.getElementById('modal-doc-number').value.trim() || String(Date.now()).slice(-4);
+            let docTypeCode = document.getElementById('modal-doc-type').value;
+            let locationCode = document.getElementById('modal-doc-location').value;
+            let status = document.getElementById('modal-doc-status').value;
 
             if (saveBtn) {
               saveBtn.disabled = true;
@@ -501,7 +496,7 @@ const documentsView = {
             }
 
             const typeInfo = window.db ? window.db.normalizeDocType(docTypeCode) : { code: docTypeCode.replace('.', ''), name: docTypeCode };
-            const docCode = `DOC-${typeInfo.code}-${gradYear}-${setNo}-${docNum}`;
+            const docCode = isEdit ? docToEdit.doc_code : `DOC-${typeInfo.code}-${gradYear}-${setNo}-${docNum}`;
 
             try {
               if (isEdit) {

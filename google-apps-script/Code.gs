@@ -371,8 +371,11 @@ function syncStudentsSheet(ss, students, deletedKeys, masterDeletedMap) {
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var sid = String(row[0] || "").trim();
-      if (sid && sid.toLowerCase() !== "รหัสนักเรียน" && !currentDeletedMap[sid.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var sid = String(row[0] || "").trim() || ("STU-AUTO-" + (r + 1));
+      if (sid.toLowerCase() !== "รหัสนักเรียน" && !currentDeletedMap[sid.toLowerCase()]) {
         var timeVal = row[10];
         studentMap[sid.toLowerCase()] = {
           student_id: sid,
@@ -394,29 +397,28 @@ function syncStudentsSheet(ss, students, deletedKeys, masterDeletedMap) {
   if (Array.isArray(students)) {
     for (var sIdx = 0; sIdx < students.length; sIdx++) {
       var s = students[sIdx];
-      var sid = String(s.student_id || "").trim();
-      if (sid) {
-        var key = sid.toLowerCase();
-        var incomingTimeStr = s.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = studentMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      if (!s) continue;
+      var sid = String(s.student_id || "").trim() || ("STU-AUTO-" + (sIdx + 1));
+      var key = sid.toLowerCase();
+      var incomingTimeStr = s.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = studentMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          studentMap[key] = {
-            student_id: sid,
-            prefix: String(s.prefix || (existing ? existing.prefix : "")),
-            first_name: String(s.first_name || (existing ? existing.first_name : "")),
-            last_name: String(s.last_name || (existing ? existing.last_name : "")),
-            previous_name: String(s.previous_name || (existing ? existing.previous_name : "")),
-            grade_level: String(s.grade_level || (existing ? existing.grade_level : "")),
-            academic_year: String(s.academic_year || (existing ? existing.academic_year : "")),
-            doc_number: String(s.doc_number || (existing ? existing.doc_number : "")),
-            set_number: String(s.set_number || s.book_number || (existing ? existing.set_number : "")),
-            status: String(s.status || (existing ? existing.status : "ปกติ")),
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        studentMap[key] = {
+          student_id: sid,
+          prefix: String(s.prefix || (existing ? existing.prefix : "")),
+          first_name: String(s.first_name || (existing ? existing.first_name : "")),
+          last_name: String(s.last_name || (existing ? existing.last_name : "")),
+          previous_name: String(s.previous_name || (existing ? existing.previous_name : "")),
+          grade_level: String(s.grade_level || (existing ? existing.grade_level : "")),
+          academic_year: String(s.academic_year || (existing ? existing.academic_year : "")),
+          doc_number: String(s.doc_number || (existing ? existing.doc_number : "")),
+          set_number: String(s.set_number || s.book_number || (existing ? existing.set_number : "")),
+          status: String(s.status || (existing ? existing.status : "ปกติ")),
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -425,7 +427,19 @@ function syncStudentsSheet(ss, students, deletedKeys, masterDeletedMap) {
   var keys = Object.keys(studentMap);
   for (var k = 0; k < keys.length; k++) {
     var st = studentMap[keys[k]];
-    rows.push([st.student_id, st.prefix, st.first_name, st.last_name, st.previous_name, st.grade_level, st.academic_year, st.doc_number, st.set_number, st.status, st.updated_at]);
+    rows.push([
+      st.student_id || "-",
+      st.prefix || "-",
+      st.first_name || "-",
+      st.last_name || "-",
+      st.previous_name || "-",
+      st.grade_level || "-",
+      st.academic_year || "-",
+      st.doc_number || "-",
+      st.set_number || "-",
+      st.status || "สำเร็จการศึกษา",
+      st.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -458,19 +472,22 @@ function syncDocumentsSheet(ss, documents, deletedKeys, masterDeletedMap) {
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var dcode = String(row[0] || "").trim();
-      if (dcode && dcode.toLowerCase() !== "รหัสเอกสาร" && !currentDeletedMap[dcode.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var dcode = String(row[0] || "").trim() || ("DOC-AUTO-" + (r + 1));
+      if (dcode.toLowerCase() !== "รหัสเอกสาร" && !currentDeletedMap[dcode.toLowerCase()]) {
         var timeVal = row[9];
         docMap[dcode.toLowerCase()] = {
           doc_code: dcode,
-          student_id: String(row[1] || ""),
-          student_name: String(row[2] || ""),
+          student_id: String(row[1] || "-"),
+          student_name: String(row[2] || "-"),
           doc_type_code: String(row[3] || "ปพ.1"),
-          academic_year: String(row[4] || ""),
-          book_number: String(row[5] || ""),
-          doc_number: String(row[6] || ""),
-          status: String(row[7] || ""),
-          location_code: String(row[8] || ""),
+          academic_year: String(row[4] || "-"),
+          book_number: String(row[5] || "-"),
+          doc_number: String(row[6] || "-"),
+          status: String(row[7] || "stored"),
+          location_code: String(row[8] || "-"),
           updated_at: timeVal ? (timeVal instanceof Date ? timeVal.toISOString() : String(timeVal)) : ""
         };
       }
@@ -480,31 +497,33 @@ function syncDocumentsSheet(ss, documents, deletedKeys, masterDeletedMap) {
   if (Array.isArray(documents)) {
     for (var dIdx = 0; dIdx < documents.length; dIdx++) {
       var d = documents[dIdx];
+      if (!d) continue;
       var dcode = String(d.doc_code || "").trim();
       if (!dcode && d.doc_number) {
         dcode = "DOC-" + (d.doc_type_code || "ปพ.1").replace('.', '') + "-" + (d.academic_year || "2565") + "-" + (d.book_number || "01") + "-" + d.doc_number;
       }
-      if (dcode) {
-        var key = dcode.toLowerCase();
-        var incomingTimeStr = d.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = docMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      if (!dcode) {
+        dcode = "DOC-AUTO-" + (dIdx + 1);
+      }
+      var key = dcode.toLowerCase();
+      var incomingTimeStr = d.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = docMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          docMap[key] = {
-            doc_code: dcode,
-            student_id: String(d.student_id || (existing ? existing.student_id : "")),
-            student_name: String(d.student_name || (existing ? existing.student_name : "")),
-            doc_type_code: String(d.doc_type_code || (existing ? existing.doc_type_code : "ปพ.1")),
-            academic_year: String(d.academic_year || (existing ? existing.academic_year : "")),
-            book_number: String(d.book_number || (existing ? existing.book_number : "")),
-            doc_number: String(d.doc_number || (existing ? existing.doc_number : "")),
-            status: String(d.status || (existing ? existing.status : "")),
-            location_code: String(d.location_code || (existing ? existing.location_code : "")),
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        docMap[key] = {
+          doc_code: dcode,
+          student_id: String(d.student_id || (existing ? existing.student_id : "-")),
+          student_name: String(d.student_name || (existing ? existing.student_name : "-")),
+          doc_type_code: String(d.doc_type_code || (existing ? existing.doc_type_code : "ปพ.1")),
+          academic_year: String(d.academic_year || (existing ? existing.academic_year : "-")),
+          book_number: String(d.book_number || (existing ? existing.book_number : "-")),
+          doc_number: String(d.doc_number || (existing ? existing.doc_number : "-")),
+          status: String(d.status || (existing ? existing.status : "stored")),
+          location_code: String(d.location_code || (existing ? existing.location_code : "-")),
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -513,7 +532,18 @@ function syncDocumentsSheet(ss, documents, deletedKeys, masterDeletedMap) {
   var keys = Object.keys(docMap);
   for (var k = 0; k < keys.length; k++) {
     var dc = docMap[keys[k]];
-    rows.push([dc.doc_code, dc.student_id, dc.student_name, dc.doc_type_code, dc.academic_year, dc.book_number, dc.doc_number, dc.status, dc.location_code, dc.updated_at]);
+    rows.push([
+      dc.doc_code || "-",
+      dc.student_id || "-",
+      dc.student_name || "-",
+      dc.doc_type_code || "ปพ.1",
+      dc.academic_year || "-",
+      dc.book_number || "-",
+      dc.doc_number || "-",
+      dc.status || "stored",
+      dc.location_code || "-",
+      dc.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -546,18 +576,21 @@ function syncBooksSheet(ss, books, deletedKeys, masterDeletedMap) {
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var bcode = String(row[0] || "").trim();
-      if (bcode && bcode.toLowerCase() !== "รหัสเล่ม" && !currentDeletedMap[bcode.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var bcode = String(row[0] || "").trim() || ("BOOK-AUTO-" + (r + 1));
+      if (bcode.toLowerCase() !== "รหัสเล่ม" && !currentDeletedMap[bcode.toLowerCase()]) {
         var timeVal = row[8];
         bookMap[bcode.toLowerCase()] = {
           book_code: bcode,
-          doc_type_code: String(row[1] || ""),
-          academic_year: String(row[2] || ""),
-          book_number: String(row[3] || ""),
-          start_no: String(row[4] || ""),
-          end_no: String(row[5] || ""),
+          doc_type_code: String(row[1] || "-"),
+          academic_year: String(row[2] || "-"),
+          book_number: String(row[3] || "-"),
+          start_no: String(row[4] || "-"),
+          end_no: String(row[5] || "-"),
           item_count: Number(row[6] || 0),
-          location_code: String(row[7] || ""),
+          location_code: String(row[7] || "-"),
           updated_at: timeVal ? (timeVal instanceof Date ? timeVal.toISOString() : String(timeVal)) : ""
         };
       }
@@ -567,27 +600,26 @@ function syncBooksSheet(ss, books, deletedKeys, masterDeletedMap) {
   if (Array.isArray(books)) {
     for (var bIdx = 0; bIdx < books.length; bIdx++) {
       var b = books[bIdx];
-      var bcode = String(b.book_code || "").trim();
-      if (bcode) {
-        var key = bcode.toLowerCase();
-        var incomingTimeStr = b.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = bookMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      if (!b) continue;
+      var bcode = String(b.book_code || "").trim() || ("BOOK-AUTO-" + (bIdx + 1));
+      var key = bcode.toLowerCase();
+      var incomingTimeStr = b.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = bookMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          bookMap[key] = {
-            book_code: bcode,
-            doc_type_code: String(b.doc_type_code || (existing ? existing.doc_type_code : "")),
-            academic_year: String(b.academic_year || (existing ? existing.academic_year : "")),
-            book_number: String(b.book_number || (existing ? existing.book_number : "")),
-            start_no: String(b.start_no || (existing ? existing.start_no : "")),
-            end_no: String(b.end_no || (existing ? existing.end_no : "")),
-            item_count: Number(b.item_count !== undefined ? b.item_count : (existing ? existing.item_count : 0)),
-            location_code: String(b.location_code || (existing ? existing.location_code : "")),
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        bookMap[key] = {
+          book_code: bcode,
+          doc_type_code: String(b.doc_type_code || (existing ? existing.doc_type_code : "-")),
+          academic_year: String(b.academic_year || (existing ? existing.academic_year : "-")),
+          book_number: String(b.book_number || (existing ? existing.book_number : "-")),
+          start_no: String(b.start_no || (existing ? existing.start_no : "-")),
+          end_no: String(b.end_no || (existing ? existing.end_no : "-")),
+          item_count: Number(b.item_count !== undefined ? b.item_count : (existing ? existing.item_count : 0)),
+          location_code: String(b.location_code || (existing ? existing.location_code : "-")),
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -596,7 +628,17 @@ function syncBooksSheet(ss, books, deletedKeys, masterDeletedMap) {
   var keys = Object.keys(bookMap);
   for (var k = 0; k < keys.length; k++) {
     var bk = bookMap[keys[k]];
-    rows.push([bk.book_code, bk.doc_type_code, bk.academic_year, bk.book_number, bk.start_no, bk.end_no, bk.item_count, bk.location_code, bk.updated_at]);
+    rows.push([
+      bk.book_code || "-",
+      bk.doc_type_code || "-",
+      bk.academic_year || "-",
+      bk.book_number || "-",
+      bk.start_no || "-",
+      bk.end_no || "-",
+      bk.item_count !== undefined ? bk.item_count : 0,
+      bk.location_code || "-",
+      bk.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -629,20 +671,23 @@ function syncLoansSheet(ss, loans, deletedKeys, masterDeletedMap) {
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var lcode = String(row[0] || "").trim();
-      if (lcode && lcode.toLowerCase() !== "เลขที่คำขอ" && !currentDeletedMap[lcode.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var lcode = String(row[0] || "").trim() || ("REQ-AUTO-" + (r + 1));
+      if (lcode.toLowerCase() !== "เลขที่คำขอ" && !currentDeletedMap[lcode.toLowerCase()]) {
         var timeVal = row[10];
         loanMap[lcode.toLowerCase()] = {
           loan_code: lcode,
-          student_id: String(row[1] || ""),
-          student_name: String(row[2] || ""),
+          student_id: String(row[1] || "-"),
+          student_name: String(row[2] || "-"),
           doc_type_code: String(row[3] || "ปพ.1"),
-          borrower_name: String(row[4] || ""),
-          borrower_dept: String(row[5] || ""),
-          loan_date: String(row[6] || ""),
-          return_due_date: String(row[7] || ""),
-          reason: String(row[8] || ""),
-          status_text: String(row[9] || ""),
+          borrower_name: String(row[4] || "-"),
+          borrower_dept: String(row[5] || "-"),
+          loan_date: String(row[6] || "-"),
+          return_due_date: String(row[7] || "-"),
+          reason: String(row[8] || "-"),
+          status_text: String(row[9] || "-"),
           updated_at: timeVal ? (timeVal instanceof Date ? timeVal.toISOString() : String(timeVal)) : ""
         };
       }
@@ -652,30 +697,29 @@ function syncLoansSheet(ss, loans, deletedKeys, masterDeletedMap) {
   if (Array.isArray(loans)) {
     for (var lIdx = 0; lIdx < loans.length; lIdx++) {
       var l = loans[lIdx];
-      var lcode = String(l.loan_code || "").trim();
-      if (lcode) {
-        var key = lcode.toLowerCase();
-        var statusText = (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา';
-        var incomingTimeStr = l.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = loanMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      if (!l) continue;
+      var lcode = String(l.loan_code || "").trim() || ("REQ-AUTO-" + (lIdx + 1));
+      var key = lcode.toLowerCase();
+      var statusText = (l.status === 'returned' || l.status === 'completed') ? 'รับเอกสารแล้ว' : 'รอดำเนินการออกสำเนา';
+      var incomingTimeStr = l.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = loanMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          loanMap[key] = {
-            loan_code: lcode.replace('LN-', 'REQ-'),
-            student_id: String(l.student_id || (existing ? existing.student_id : "")),
-            student_name: String(l.student_name || (existing ? existing.student_name : "")),
-            doc_type_code: String(l.doc_type_code || (existing ? existing.doc_type_code : "ปพ.1")),
-            borrower_name: String(l.borrower_name || (existing ? existing.borrower_name : "")),
-            borrower_dept: String(l.borrower_dept || (existing ? existing.borrower_dept : "")),
-            loan_date: String(l.loan_date || (existing ? existing.loan_date : "")),
-            return_due_date: String(l.return_due_date || (existing ? existing.return_due_date : "")),
-            reason: String(l.reason || (existing ? existing.reason : "")),
-            status_text: statusText,
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        loanMap[key] = {
+          loan_code: lcode.replace('LN-', 'REQ-'),
+          student_id: String(l.student_id || (existing ? existing.student_id : "-")),
+          student_name: String(l.student_name || (existing ? existing.student_name : "-")),
+          doc_type_code: String(l.doc_type_code || (existing ? existing.doc_type_code : "ปพ.1")),
+          borrower_name: String(l.borrower_name || (existing ? existing.borrower_name : "-")),
+          borrower_dept: String(l.borrower_dept || (existing ? existing.borrower_dept : "-")),
+          loan_date: String(l.loan_date || (existing ? existing.loan_date : "-")),
+          return_due_date: String(l.return_due_date || (existing ? existing.return_due_date : "-")),
+          reason: String(l.reason || (existing ? existing.reason : "-")),
+          status_text: statusText,
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -684,7 +728,19 @@ function syncLoansSheet(ss, loans, deletedKeys, masterDeletedMap) {
   var keys = Object.keys(loanMap);
   for (var k = 0; k < keys.length; k++) {
     var ln = loanMap[keys[k]];
-    rows.push([ln.loan_code, ln.student_id, ln.student_name, ln.doc_type_code, ln.borrower_name, ln.borrower_dept, ln.loan_date, ln.return_due_date, ln.reason, ln.status_text, ln.updated_at]);
+    rows.push([
+      ln.loan_code || "-",
+      ln.student_id || "-",
+      ln.student_name || "-",
+      ln.doc_type_code || "ปพ.1",
+      ln.borrower_name || "-",
+      ln.borrower_dept || "-",
+      ln.loan_date || "-",
+      ln.return_due_date || "-",
+      ln.reason || "-",
+      ln.status_text || "-",
+      ln.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -717,17 +773,20 @@ function syncStorageLocationsSheet(ss, locations, deletedKeys, masterDeletedMap)
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var code = String(row[0] || "").trim();
-      if (code && code.toLowerCase() !== "location code" && !currentDeletedMap[code.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var code = String(row[0] || "").trim() || ("LOC-AUTO-" + (r + 1));
+      if (code.toLowerCase() !== "location code" && !currentDeletedMap[code.toLowerCase()]) {
         var timeVal = row[7];
         locMap[code.toLowerCase()] = {
           code: code,
-          building: String(row[1] || ""),
-          room: String(row[2] || ""),
-          cabinet: String(row[3] || ""),
-          shelf: String(row[4] || ""),
-          folder: String(row[5] || ""),
-          description: String(row[6] || ""),
+          building: String(row[1] || "-"),
+          room: String(row[2] || "-"),
+          cabinet: String(row[3] || "-"),
+          shelf: String(row[4] || "-"),
+          folder: String(row[5] || "-"),
+          description: String(row[6] || "-"),
           updated_at: timeVal ? (timeVal instanceof Date ? timeVal.toISOString() : String(timeVal)) : ""
         };
       }
@@ -737,28 +796,27 @@ function syncStorageLocationsSheet(ss, locations, deletedKeys, masterDeletedMap)
   if (Array.isArray(locations)) {
     for (var locIdx = 0; locIdx < locations.length; locIdx++) {
       var l = locations[locIdx];
-      var code = String(l.code || "").trim();
-      if (code) {
-        var key = code.toLowerCase();
-        if (currentDeletedMap[key]) continue;
+      if (!l) continue;
+      var code = String(l.code || "").trim() || ("LOC-AUTO-" + (locIdx + 1));
+      var key = code.toLowerCase();
+      if (currentDeletedMap[key]) continue;
 
-        var incomingTimeStr = l.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = locMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      var incomingTimeStr = l.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = locMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          locMap[key] = {
-            code: code,
-            building: String(l.building || (existing ? existing.building : "")),
-            room: String(l.room || (existing ? existing.room : "")),
-            cabinet: String(l.cabinet || (existing ? existing.cabinet : "")),
-            shelf: String(l.shelf || (existing ? existing.shelf : "")),
-            folder: String(l.folder || (existing ? existing.folder : "")),
-            description: String(l.description || (existing ? existing.description : "")),
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        locMap[key] = {
+          code: code,
+          building: String(l.building || (existing ? existing.building : "-")),
+          room: String(l.room || (existing ? existing.room : "-")),
+          cabinet: String(l.cabinet || (existing ? existing.cabinet : "-")),
+          shelf: String(l.shelf || (existing ? existing.shelf : "-")),
+          folder: String(l.folder || (existing ? existing.folder : "-")),
+          description: String(l.description || (existing ? existing.description : "-")),
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -767,7 +825,16 @@ function syncStorageLocationsSheet(ss, locations, deletedKeys, masterDeletedMap)
   var keys = Object.keys(locMap);
   for (var k = 0; k < keys.length; k++) {
     var lc = locMap[keys[k]];
-    rows.push([lc.code, lc.building, lc.room, lc.cabinet, lc.shelf, lc.folder, lc.description, lc.updated_at]);
+    rows.push([
+      lc.code || "-",
+      lc.building || "-",
+      lc.room || "-",
+      lc.cabinet || "-",
+      lc.shelf || "-",
+      lc.folder || "-",
+      lc.description || "-",
+      lc.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -800,17 +867,20 @@ function syncUsersSheet(ss, users, deletedKeys, masterDeletedMap) {
     var existingValues = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
     for (var r = 0; r < existingValues.length; r++) {
       var row = existingValues[r];
-      var uname = String(row[0] || "").trim();
-      if (uname && uname.toLowerCase() !== "ชื่อผู้ใช้งาน (username)" && !currentDeletedMap[uname.toLowerCase()]) {
+      var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+      if (!hasAnyContent) continue;
+
+      var uname = String(row[0] || "").trim() || ("user_auto_" + (r + 1));
+      if (uname.toLowerCase() !== "ชื่อผู้ใช้งาน (username)" && !currentDeletedMap[uname.toLowerCase()]) {
         var timeVal = row[8];
         userMap[uname.toLowerCase()] = {
           username: uname,
-          title: String(row[1] || ""),
-          first_name: String(row[2] || ""),
-          last_name: String(row[3] || ""),
+          title: String(row[1] || "-"),
+          first_name: String(row[2] || "-"),
+          last_name: String(row[3] || "-"),
           role_code: String(row[4] || "staff"),
-          email: String(row[5] || ""),
-          created_at: String(row[6] || ""),
+          email: String(row[5] || "-"),
+          created_at: String(row[6] || "-"),
           password_hash: String(row[7] || "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"),
           updated_at: timeVal ? (timeVal instanceof Date ? timeVal.toISOString() : String(timeVal)) : ""
         };
@@ -821,27 +891,26 @@ function syncUsersSheet(ss, users, deletedKeys, masterDeletedMap) {
   if (Array.isArray(users)) {
     for (var uIdx = 0; uIdx < users.length; uIdx++) {
       var u = users[uIdx];
-      var uname = String(u.username || "").trim();
-      if (uname) {
-        var key = uname.toLowerCase();
-        var incomingTimeStr = u.updated_at || new Date().toISOString();
-        var incomingTime = parseTime(incomingTimeStr);
-        var existing = userMap[key];
-        var existingTime = existing ? parseTime(existing.updated_at) : 0;
+      if (!u) continue;
+      var uname = String(u.username || "").trim() || ("user_auto_" + (uIdx + 1));
+      var key = uname.toLowerCase();
+      var incomingTimeStr = u.updated_at || new Date().toISOString();
+      var incomingTime = parseTime(incomingTimeStr);
+      var existing = userMap[key];
+      var existingTime = existing ? parseTime(existing.updated_at) : 0;
 
-        if (!existing || incomingTime >= existingTime) {
-          userMap[key] = {
-            username: uname,
-            title: String(u.title || (existing ? existing.title : "")),
-            first_name: String(u.first_name || (existing ? existing.first_name : "")),
-            last_name: String(u.last_name || (existing ? existing.last_name : "")),
-            role_code: String(u.role_code || (existing ? existing.role_code : "staff")),
-            email: String(u.email || (existing ? existing.email : "")),
-            created_at: String(u.created_at || (existing ? existing.created_at : "")),
-            password_hash: String(u.password_hash || (existing ? existing.password_hash : "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918")),
-            updated_at: incomingTimeStr
-          };
-        }
+      if (!existing || incomingTime >= existingTime) {
+        userMap[key] = {
+          username: uname,
+          title: String(u.title || (existing ? existing.title : "-")),
+          first_name: String(u.first_name || (existing ? existing.first_name : "-")),
+          last_name: String(u.last_name || (existing ? existing.last_name : "-")),
+          role_code: String(u.role_code || (existing ? existing.role_code : "staff")),
+          email: String(u.email || (existing ? existing.email : "-")),
+          created_at: String(u.created_at || (existing ? existing.created_at : "-")),
+          password_hash: String(u.password_hash || (existing ? existing.password_hash : "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918")),
+          updated_at: incomingTimeStr
+        };
       }
     }
   }
@@ -850,7 +919,17 @@ function syncUsersSheet(ss, users, deletedKeys, masterDeletedMap) {
   var keys = Object.keys(userMap);
   for (var k = 0; k < keys.length; k++) {
     var usr = userMap[keys[k]];
-    rows.push([usr.username, usr.title, usr.first_name, usr.last_name, usr.role_code, usr.email, usr.created_at, usr.password_hash, usr.updated_at]);
+    rows.push([
+      usr.username || "-",
+      usr.title || "-",
+      usr.first_name || "-",
+      usr.last_name || "-",
+      usr.role_code || "staff",
+      usr.email || "-",
+      usr.created_at || "-",
+      usr.password_hash || "-",
+      usr.updated_at || ""
+    ]);
   }
 
   if (lastRow > 0) {
@@ -918,20 +997,24 @@ function autoCrossLinkSheets(ss) {
       var stCols = Math.max(studentsSheet.getLastColumn(), 11);
       var stVals = studentsSheet.getRange(2, 1, stLastRow - 1, stCols).getValues();
       for (var r = 0; r < stVals.length; r++) {
-        var sid = String(stVals[r][0] || "").trim();
-        if (sid && sid.toLowerCase() !== "รหัสนักเรียน") {
+        var row = stVals[r];
+        var hasAnyContent = row.some(function(cell) { return String(cell || "").trim() !== ""; });
+        if (!hasAnyContent) continue;
+
+        var sid = String(row[0] || "").trim() || ("STU-AUTO-" + (r + 1));
+        if (sid.toLowerCase() !== "รหัสนักเรียน") {
           studentMap[sid.toLowerCase()] = {
             student_id: sid,
-            prefix: String(stVals[r][1] || ""),
-            first_name: String(stVals[r][2] || ""),
-            last_name: String(stVals[r][3] || ""),
-            previous_name: String(stVals[r][4] || ""),
-            grade_level: String(stVals[r][5] || ""),
-            academic_year: String(stVals[r][6] || ""),
-            doc_number: String(stVals[r][7] || ""),
-            set_number: String(stVals[r][8] || ""),
-            status: String(stVals[r][9] || "ปกติ"),
-            updated_at: String(stVals[r][10] || "")
+            prefix: String(row[1] || ""),
+            first_name: String(row[2] || ""),
+            last_name: String(row[3] || ""),
+            previous_name: String(row[4] || ""),
+            grade_level: String(row[5] || ""),
+            academic_year: String(row[6] || ""),
+            doc_number: String(row[7] || ""),
+            set_number: String(row[8] || ""),
+            status: String(row[9] || "ปกติ"),
+            updated_at: String(row[10] || "")
           };
         }
       }
@@ -943,19 +1026,23 @@ function autoCrossLinkSheets(ss) {
       var docCols = Math.max(docsSheet.getLastColumn(), 10);
       var docVals = docsSheet.getRange(2, 1, docLastRow - 1, docCols).getValues();
       for (var r2 = 0; r2 < docVals.length; r2++) {
-        var dcode = String(docVals[r2][0] || "").trim();
-        if (dcode && dcode.toLowerCase() !== "รหัสเอกสาร") {
+        var row2 = docVals[r2];
+        var hasAnyContent = row2.some(function(cell) { return String(cell || "").trim() !== ""; });
+        if (!hasAnyContent) continue;
+
+        var dcode = String(row2[0] || "").trim() || ("DOC-AUTO-" + (r2 + 1));
+        if (dcode.toLowerCase() !== "รหัสเอกสาร") {
           docMap[dcode.toLowerCase()] = {
             doc_code: dcode,
-            student_id: String(docVals[r2][1] || "").trim(),
-            student_name: String(docVals[r2][2] || "").trim(),
-            doc_type_code: String(docVals[r2][3] || "ปพ.1").trim(),
-            academic_year: String(docVals[r2][4] || "").trim(),
-            book_number: String(docVals[r2][5] || "").trim(),
-            doc_number: String(docVals[r2][6] || "").trim(),
-            status: String(docVals[r2][7] || "stored").trim(),
-            location_code: String(docVals[r2][8] || "").trim(),
-            updated_at: String(docVals[r2][9] || "")
+            student_id: String(row2[1] || "").trim(),
+            student_name: String(row2[2] || "").trim(),
+            doc_type_code: String(row2[3] || "ปพ.1").trim(),
+            academic_year: String(row2[4] || "").trim(),
+            book_number: String(row2[5] || "").trim(),
+            doc_number: String(row2[6] || "").trim(),
+            status: String(row2[7] || "stored").trim(),
+            location_code: String(row2[8] || "").trim(),
+            updated_at: String(row2[9] || "")
           };
         }
       }
@@ -967,18 +1054,22 @@ function autoCrossLinkSheets(ss) {
       var bkCols = Math.max(booksSheet.getLastColumn(), 9);
       var bkVals = booksSheet.getRange(2, 1, bkLastRow - 1, bkCols).getValues();
       for (var r3 = 0; r3 < bkVals.length; r3++) {
-        var bcode = String(bkVals[r3][0] || "").trim();
-        if (bcode && bcode.toLowerCase() !== "รหัสเล่ม") {
+        var row3 = bkVals[r3];
+        var hasAnyContent = row3.some(function(cell) { return String(cell || "").trim() !== ""; });
+        if (!hasAnyContent) continue;
+
+        var bcode = String(row3[0] || "").trim() || ("BOOK-AUTO-" + (r3 + 1));
+        if (bcode.toLowerCase() !== "รหัสเล่ม") {
           var bItem = {
             book_code: bcode,
-            doc_type_code: String(bkVals[r3][1] || ""),
-            academic_year: String(bkVals[r3][2] || ""),
-            book_number: String(bkVals[r3][3] || ""),
-            start_no: String(bkVals[r3][4] || ""),
-            end_no: String(bkVals[r3][5] || ""),
-            item_count: Number(bkVals[r3][6] || 0),
-            location_code: String(bkVals[r3][7] || ""),
-            updated_at: String(bkVals[r3][8] || "")
+            doc_type_code: String(row3[1] || ""),
+            academic_year: String(row3[2] || ""),
+            book_number: String(row3[3] || ""),
+            start_no: String(row3[4] || ""),
+            end_no: String(row3[5] || ""),
+            item_count: Number(row3[6] || 0),
+            location_code: String(row3[7] || ""),
+            updated_at: String(row3[8] || "")
           };
 
           var nyKey = (String(bItem.book_number).trim() + "_" + String(bItem.academic_year).trim()).toLowerCase();

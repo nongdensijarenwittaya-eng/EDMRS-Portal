@@ -666,20 +666,30 @@ class RelationalDatabase {
     // 1. Students
     if (Array.isArray(sheetData.Students)) {
       const rows = sheetData.Students.length > 1 ? sheetData.Students.slice(1) : [];
-      const parsedStudents = rows.map((row, idx) => ({
-        id: idx + 1,
-        student_id: String(row[0] || '').trim(),
-        prefix: String(row[1] || '').trim(),
-        first_name: String(row[2] || '').trim(),
-        last_name: String(row[3] || '').trim(),
-        previous_name: String(row[4] || '').trim(),
-        grade_level: String(row[5] || '').trim(),
-        academic_year: String(row[6] || '').trim(),
-        doc_number: String(row[7] || '').trim(),
-        set_number: String(row[8] || '').trim(),
-        status: String(row[9] || 'ปกติ').trim(),
-        updated_at: String(row[10] || '').trim()
-      })).filter(s => s.student_id);
+      const parsedStudents = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+        const sid = getCell(0, `STU-AUTO-${idx + 1}`);
+        return {
+          id: idx + 1,
+          student_id: sid,
+          prefix: getCell(1, '-'),
+          first_name: getCell(2, '-'),
+          last_name: getCell(3, '-'),
+          previous_name: getCell(4, '-'),
+          grade_level: getCell(5, '-'),
+          academic_year: getCell(6, '-'),
+          doc_number: getCell(7, '-'),
+          set_number: getCell(8, '-'),
+          status: getCell(9, 'ปกติ'),
+          updated_at: String(row[10] || '').trim()
+        };
+      }).filter(Boolean);
 
       const parsedSidSet = new Set(parsedStudents.map(s => s.student_id.toLowerCase()));
 
@@ -715,27 +725,35 @@ class RelationalDatabase {
     if (Array.isArray(sheetData.Documents)) {
       const rows = sheetData.Documents.length > 1 ? sheetData.Documents.slice(1) : [];
       const parsedDocs = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+
         const dcode = String(row[0] || '').trim();
         const docNum = String(row[6] || '').trim();
-        const docTypeCode = String(row[3] || 'ปพ.1').trim();
-        const acYear = String(row[4] || '').trim();
-        const bookNum = String(row[5] || '').trim();
-        const code = dcode || (docNum ? `DOC-${docTypeCode.replace('.', '')}-${acYear || '2565'}-${bookNum || '01'}-${docNum}` : '');
+        const docTypeCode = getCell(3, 'ปพ.1');
+        const acYear = getCell(4, '-');
+        const bookNum = getCell(5, '-');
+        const code = dcode || (docNum ? `DOC-${docTypeCode.replace('.', '')}-${acYear === '-' ? '2565' : acYear}-${bookNum === '-' ? '01' : bookNum}-${docNum}` : `DOC-AUTO-${idx + 1}`);
 
         return {
           id: idx + 1,
           doc_code: code,
-          student_id: String(row[1] || '').trim(),
-          student_name: String(row[2] || '').trim(),
+          student_id: getCell(1, '-'),
+          student_name: getCell(2, '-'),
           doc_type_code: docTypeCode,
           academic_year: acYear,
           book_number: bookNum,
-          doc_number: docNum,
-          status: String(row[7] || 'stored').trim(),
-          location_code: String(row[8] || '').trim(),
+          doc_number: getCell(6, '-'),
+          status: getCell(7, 'stored'),
+          location_code: getCell(8, '-'),
           updated_at: String(row[9] || '').trim()
         };
-      }).filter(d => d.doc_code);
+      }).filter(Boolean);
 
       const parsedCodeSet = new Set(parsedDocs.map(d => d.doc_code.toLowerCase()));
 
@@ -770,18 +788,29 @@ class RelationalDatabase {
     // 3. Books
     if (Array.isArray(sheetData.Books)) {
       const rows = sheetData.Books.length > 1 ? sheetData.Books.slice(1) : [];
-      const parsedBooks = rows.map((row, idx) => ({
-        id: idx + 1,
-        book_code: String(row[0] || '').trim(),
-        doc_type_code: String(row[1] || '').trim(),
-        academic_year: String(row[2] || '').trim(),
-        book_number: String(row[3] || '').trim(),
-        start_no: String(row[4] || '').trim(),
-        end_no: String(row[5] || '').trim(),
-        item_count: Number(row[6] || 0),
-        location_code: String(row[7] || '').trim(),
-        updated_at: String(row[8] || '').trim()
-      })).filter(b => b.book_code);
+      const parsedBooks = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+
+        const bcode = getCell(0, `BOOK-AUTO-${idx + 1}`);
+        return {
+          id: idx + 1,
+          book_code: bcode,
+          doc_type_code: getCell(1, '-'),
+          academic_year: getCell(2, '-'),
+          book_number: getCell(3, '-'),
+          start_no: getCell(4, '-'),
+          end_no: getCell(5, '-'),
+          item_count: Number(row[6] || 0),
+          location_code: getCell(7, '-'),
+          updated_at: String(row[8] || '').trim()
+        };
+      }).filter(Boolean);
 
       const parsedBookSet = new Set(parsedBooks.map(b => b.book_code.toLowerCase()));
 
@@ -816,20 +845,31 @@ class RelationalDatabase {
     // 4. Loans
     if (Array.isArray(sheetData.Loans)) {
       const rows = sheetData.Loans.length > 1 ? sheetData.Loans.slice(1) : [];
-      const parsedLoans = rows.map((row, idx) => ({
-        id: idx + 1,
-        loan_code: String(row[0] || '').trim(),
-        student_id: String(row[1] || '').trim(),
-        student_name: String(row[2] || '').trim(),
-        doc_type_code: String(row[3] || 'ปพ.1').trim(),
-        borrower_name: String(row[4] || '').trim(),
-        borrower_dept: String(row[5] || '').trim(),
-        loan_date: String(row[6] || '').trim(),
-        return_due_date: String(row[7] || '').trim(),
-        reason: String(row[8] || '').trim(),
-        status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending',
-        updated_at: String(row[10] || '').trim()
-      })).filter(l => l.loan_code);
+      const parsedLoans = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+
+        const lcode = getCell(0, `REQ-AUTO-${idx + 1}`);
+        return {
+          id: idx + 1,
+          loan_code: lcode,
+          student_id: getCell(1, '-'),
+          student_name: getCell(2, '-'),
+          doc_type_code: getCell(3, 'ปพ.1'),
+          borrower_name: getCell(4, '-'),
+          borrower_dept: getCell(5, '-'),
+          loan_date: getCell(6, '-'),
+          return_due_date: getCell(7, '-'),
+          reason: getCell(8, '-'),
+          status: (String(row[9] || '').includes('รับ') || String(row[9] || '').includes('returned')) ? 'returned' : 'pending',
+          updated_at: String(row[10] || '').trim()
+        };
+      }).filter(Boolean);
 
       const parsedLoanSet = new Set(parsedLoans.map(l => l.loan_code.toLowerCase()));
 
@@ -864,17 +904,28 @@ class RelationalDatabase {
     // 5. Storage_Locations
     if (Array.isArray(sheetData.Storage_Locations)) {
       const rows = sheetData.Storage_Locations.length > 1 ? sheetData.Storage_Locations.slice(1) : [];
-      const parsedLocs = rows.map((row, idx) => ({
-        id: idx + 1,
-        code: String(row[0] || '').trim(),
-        building: String(row[1] || '').trim(),
-        room: String(row[2] || '').trim(),
-        cabinet: String(row[3] || '').trim(),
-        shelf: String(row[4] || '').trim(),
-        folder: String(row[5] || '').trim(),
-        description: String(row[6] || '').trim(),
-        updated_at: String(row[7] || '').trim()
-      })).filter(l => l.code);
+      const parsedLocs = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+
+        const locCode = getCell(0, `LOC-AUTO-${idx + 1}`);
+        return {
+          id: idx + 1,
+          code: locCode,
+          building: getCell(1, '-'),
+          room: getCell(2, '-'),
+          cabinet: getCell(3, '-'),
+          shelf: getCell(4, '-'),
+          folder: getCell(5, '-'),
+          description: getCell(6, '-'),
+          updated_at: String(row[7] || '').trim()
+        };
+      }).filter(Boolean);
 
       const parsedLocSet = new Set(parsedLocs.map(l => l.code.toLowerCase()));
 
@@ -909,18 +960,29 @@ class RelationalDatabase {
     // 6. Users
     if (Array.isArray(sheetData.Users)) {
       const rows = sheetData.Users.length > 1 ? sheetData.Users.slice(1) : [];
-      const parsedUsers = rows.map((row, idx) => ({
-        id: idx + 1,
-        username: String(row[0] || '').trim(),
-        title: String(row[1] || '').trim(),
-        first_name: String(row[2] || '').trim(),
-        last_name: String(row[3] || '').trim(),
-        role_code: String(row[4] || 'staff').trim(),
-        email: String(row[5] || '').trim(),
-        created_at: String(row[6] || '').trim(),
-        password_hash: String(row[7] || '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918').trim(),
-        updated_at: String(row[8] || '').trim()
-      })).filter(u => u.username);
+      const parsedUsers = rows.map((row, idx) => {
+        if (!Array.isArray(row)) return null;
+        const hasAnyContent = row.some(cell => String(cell || '').trim() !== '');
+        if (!hasAnyContent) return null;
+        const getCell = (i, fb = '-') => {
+          const v = String(row[i] || '').trim();
+          return v !== '' ? v : fb;
+        };
+
+        const uname = getCell(0, `user_auto_${idx + 1}`);
+        return {
+          id: idx + 1,
+          username: uname,
+          title: getCell(1, '-'),
+          first_name: getCell(2, '-'),
+          last_name: getCell(3, '-'),
+          role_code: getCell(4, 'staff'),
+          email: getCell(5, '-'),
+          created_at: getCell(6, '-'),
+          password_hash: getCell(7, '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'),
+          updated_at: String(row[8] || '').trim()
+        };
+      }).filter(Boolean);
 
       const parsedUserSet = new Set(parsedUsers.map(u => u.username.toLowerCase()));
 
@@ -1255,8 +1317,8 @@ class RelationalDatabase {
 
   // --- Student CRUD ---
   async addStudent(studentData) {
-    if (!studentData.student_id) throw new Error('ต้องระบุรหัสนักเรียน (student_id)');
-    const cleanSid = String(studentData.student_id).trim();
+    const cleanSid = studentData.student_id ? String(studentData.student_id).trim() : `STU-AUTO-${Date.now().toString().slice(-6)}`;
+    studentData.student_id = cleanSid;
 
     // Deduplication check
     const existingIdx = (this.data.students || []).findIndex(s => String(s.student_id).trim().toLowerCase() === cleanSid.toLowerCase());

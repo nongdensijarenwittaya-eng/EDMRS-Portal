@@ -118,7 +118,7 @@ const studentsView = {
                   <td><code>${s.student_id}</code></td>
                   <td>
                     <a href="#student-detail?id=${s.student_id}" style="font-weight: 500; color: var(--primary-700);">
-                      ${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}
+                      ${(`${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`).trim() || '-'}
                     </a>
                   </td>
                   <td><span class="badge badge-secondary">${s.grade_level || '-'}</span></td>
@@ -465,19 +465,24 @@ const studentsView = {
         class: 'btn btn-primary',
         onClick: async () => {
           const bookCodeSelect = document.getElementById('modal-book-code').value;
-          const docNumber = document.getElementById('modal-doc-number').value.trim();
-          const setNumber = document.getElementById('modal-set-number').value.trim();
-          const studentId = document.getElementById('modal-student-id').value.trim();
-          const prefix = document.getElementById('modal-prefix').value;
-          const firstName = document.getElementById('modal-first-name').value.trim();
-          const lastName = document.getElementById('modal-last-name').value.trim();
-          const gradeLevel = document.getElementById('modal-grade-level').value;
-          const academicYear = document.getElementById('modal-academic-year').value.trim();
+          let docNumber = document.getElementById('modal-doc-number').value.trim();
+          let setNumber = document.getElementById('modal-set-number').value.trim();
+          let studentId = document.getElementById('modal-student-id').value.trim();
+          let prefix = document.getElementById('modal-prefix').value;
+          let firstName = document.getElementById('modal-first-name').value.trim();
+          let lastName = document.getElementById('modal-last-name').value.trim();
+          let gradeLevel = document.getElementById('modal-grade-level').value;
+          let academicYear = document.getElementById('modal-academic-year').value.trim();
 
-          if (!docNumber || !setNumber || !studentId || !firstName || !lastName) {
-            window.utils.showToast('กรุณากรอกข้อมูลสำคัญให้ครบถ้วน', 'danger');
-            return false;
+          if (!studentId) {
+            studentId = `STU-AUTO-${Date.now().toString().slice(-6)}`;
           }
+          if (!firstName && !lastName) {
+            firstName = 'ไม่ระบุชื่อ';
+          }
+          if (!docNumber) docNumber = '-';
+          if (!setNumber) setNumber = '-';
+          if (!academicYear) academicYear = '2569';
 
           const modalSubmitBtn = document.querySelector('.modal-footer .btn-primary');
           if (modalSubmitBtn) { modalSubmitBtn.disabled = true; modalSubmitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...'; }
