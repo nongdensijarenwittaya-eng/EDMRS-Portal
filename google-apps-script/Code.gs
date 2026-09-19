@@ -319,8 +319,6 @@ function syncStudentsSheet(ss, students, deletedKeys, masterDeletedMap) {
       var sid = String(s.student_id || "").trim();
       if (sid) {
         var key = sid.toLowerCase();
-        if (currentDeletedMap[key]) continue;
-
         var incomingTimeStr = s.updated_at || new Date().toISOString();
         var incomingTime = parseTime(incomingTimeStr);
         var existing = studentMap[key];
@@ -927,7 +925,7 @@ function autoCrossLinkSheets(ss) {
     var hasDocsAddedOrChanged = false;
     var hasBooksAdded = false;
 
-    // Cross-link 1: From Students (หน้าแรก) -> Sync properties to existing linked Documents
+    // Cross-link 1: From Students (หน้าแรก) -> Auto add/sync missing Documents (หน้าสอง) & Books (หน้าสาม)
     var stKeys = Object.keys(studentMap);
     for (var s = 0; s < stKeys.length; s++) {
       var stObj = studentMap[stKeys[s]];
@@ -940,6 +938,10 @@ function autoCrossLinkSheets(ss) {
       var setNum = String(stObj.set_number || "01").trim();
       var docNum = String(stObj.doc_number || "001").trim();
       var year = String(stObj.academic_year || "2569").trim();
+
+      var typeObj = cleanDocTypeGAS("ปพ.1");
+      var dCode = "DOC-" + typeObj.code + "-" + sid;
+      var dKey = dCode.toLowerCase();
 
       var docFound = null;
       for (var dk in docMap) {
@@ -958,6 +960,107 @@ function autoCrossLinkSheets(ss) {
           docFound.updated_at = timestamp;
           hasDocsAddedOrChanged = true;
         }
+      } else if (!masterDeletedKeys.documents || !masterDeletedKeys.documents[dKey]) {
+        docMap[dKey] = {
+          doc_code: dCode,
+          student_id: sid,
+          student_name: fullName,
+          doc_type_code: "ปพ.1",
+          academic_year: year,
+          book_number: setNum,
+          doc_number: docNum,
+          status: "stored",
+          location_code: "LOC-A01-01-01",
+          updated_at: timestamp
+        };
+        hasDocsAddedOrChanged = true;
+      }
+
+      var bCode = "BOOK-" + typeObj.code + "-" + year + "-" + setNum;
+      var bKey = bCode.toLowerCase();
+      var nyKey = (setNum + "_" + year).toLowerCase();
+
+      if (!bookMap[bKey] && !bookByNumberYear[nyKey] && (!masterDeletedKeys.books || !masterDeletedKeys.books[bKey])) {
+        var newBk = {
+          book_code: bCode,
+          doc_type_code: typeObj.name,
+          academic_year: year,
+          book_number: setNum,
+          start_no: "001",
+          end_no: "050",
+          item_count: 50,
+          location_code: "LOC-A01-01-01",
+          updated_at: timestamp
+        };
+        bookMap[bKey] = newBk;
+        bookByNumberYear[nyKey] = newBk;
+        hasBooksAdded = true;
+      }
+    }
+
+    // Cross-link 2: From Documents -> Auto add missing Students to Students tab (หน้าแรก) & missing Books to Books tab (หน้าสาม)
+    var docKeys = Object.keys(docMap);
+    for (var d = 0; d < docKeys.length; d++) {
+      var docObj = docMap[docKeys[d]];
+      var sid = String(docObj.student_id || "").trim();
+      var sKey = sid.toLowerCase();
+
+      if (sid && !studentMap[sKey] && (!masterDeletedKeys.students || !masterDeletedKeys.students[sKey])) {
+        var full = docObj.student_name || "";
+        var prefix = "";
+        var firstName = full;
+        var lastName = "";
+
+        if (full.indexOf("นาย") === 0) { prefix = "นาย"; firstName = full.substring(3).trim(); }
+        else if (full.indexOf("นางสาว") === 0) { prefix = "นางสาว"; firstName = full.substring(6).trim(); }
+        else if (full.indexOf("นาง") === 0) { prefix = "นาง"; firstName = full.substring(3).trim(); }
+        else if (full.indexOf("เด็กชาย") === 0) { prefix = "เด็กชาย"; firstName = full.substring(7).trim(); }
+        else if (full.indexOf("เด็กหญิง") === 0) { prefix = "เด็กหญิง"; firstName = full.substring(8).trim(); }
+
+        var parts = firstName.split(/\s+/);
+        if (parts.length > 1) {
+          firstName = parts[0];
+          lastName = parts.slice(1).join(" ");
+        }
+
+        studentMap[sKey] = {
+          student_id: sid,
+          prefix: prefix,
+          first_name: firstName || full || "นักเรียน",
+          last_name: lastName,
+          previous_name: "",
+          grade_level: "ม.1",
+          academic_year: docObj.academic_year || "2569",
+          doc_number: docObj.doc_number || "001",
+          set_number: docObj.book_number || "01",
+          status: "ปกติ",
+          updated_at: timestamp
+        };
+        hasStudentsAdded = true;
+      }
+
+      var bNum = String(docObj.book_number || "01").trim();
+      var aYear = String(docObj.academic_year || "2569").trim();
+      var typeObj = cleanDocTypeGAS(docObj.doc_type_code || "ปพ.1");
+      var bCode = "BOOK-" + typeObj.code + "-" + aYear + "-" + bNum;
+      var bKey = bCode.toLowerCase();
+      var nyKey = (bNum + "_" + aYear).toLowerCase();
+
+      if (!bookMap[bKey] && !bookByNumberYear[nyKey] && (!masterDeletedKeys.books || !masterDeletedKeys.books[bKey])) {
+        var newBk = {
+          book_code: bCode,
+          doc_type_code: typeObj.name,
+          academic_year: aYear,
+          book_number: bNum,
+          start_no: "001",
+          end_no: "050",
+          item_count: 50,
+          location_code: docObj.location_code || "LOC-A01-01-01",
+          updated_at: timestamp
+        };
+        bookMap[bKey] = newBk;
+        bookByNumberYear[nyKey] = newBk;
+        hasBooksAdded = true;
       }
     }
 

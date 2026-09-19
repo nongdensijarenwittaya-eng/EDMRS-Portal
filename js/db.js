@@ -387,13 +387,17 @@ class RelationalDatabase {
    */
   /**
    * Auto Cross Link Students (หน้าแรก), Documents (หน้าสอง), and Books (หน้าสาม)
-   * Only updates properties of existing linked items without synthesizing phantom records.
+   * Auto-links and populates missing records for new items while checking deleted_keys.
    */
   autoCrossLinkData() {
     if (!this.data) return false;
     const students = this.data.students || [];
     const documents = this.data.documents || [];
     const books = this.data.books || [];
+
+    const deletedStudents = ((this.data.deleted_keys && this.data.deleted_keys.students) || []).map(k => String(k).toLowerCase());
+    const deletedDocuments = ((this.data.deleted_keys && this.data.deleted_keys.documents) || []).map(k => String(k).toLowerCase());
+    const deletedBooks = ((this.data.deleted_keys && this.data.deleted_keys.books) || []).map(k => String(k).toLowerCase());
 
     const studentMap = new Map();
     students.forEach(s => {
@@ -420,16 +424,20 @@ class RelationalDatabase {
 
     let updated = false;
 
-    // Sync names/properties across existing linked Students and Documents
+    // Cross Link 1: From Students (หน้าแรก) -> Auto add/sync missing Documents & Books
     students.forEach(s => {
       const sid = String(s.student_id || '').trim();
       if (!sid) return;
       const sKey = sid.toLowerCase();
+      if (deletedStudents.includes(sKey)) return;
 
       const fullName = `${s.prefix || ''}${s.first_name || ''} ${s.last_name || ''}`.trim();
       const setNum = String(s.set_number || s.book_number || '01').trim();
       const docNum = String(s.doc_number || '001').trim();
       const year = String(s.academic_year || '2569').trim();
+
+      let docTypeCode = 'ปพ.1';
+      let locationCode = 'LOC-A01-01-01';
 
       let existingBook = null;
       if (s.book_code) {
@@ -439,14 +447,18 @@ class RelationalDatabase {
         const nyKey = `${setNum}_${year}`.toLowerCase();
         existingBook = bookByNumberYear.get(nyKey);
       }
+      if (existingBook) {
+        docTypeCode = existingBook.doc_type_code || 'ปพ.1';
+        locationCode = existingBook.location_code || 'LOC-A01-01-01';
+      }
 
-      const typeInfo = this.normalizeDocType(existingBook ? existingBook.doc_type_code : 'ปพ.1');
+      const typeInfo = this.normalizeDocType(docTypeCode);
       const docCode = `DOC-${typeInfo.code}-${sid}`;
       const dKey = docCode.toLowerCase();
 
       let existingDoc = docMapBySid.get(sKey) || docMapByCode.get(dKey);
+      const targetBookCode = existingBook ? existingBook.book_code : (s.book_code || `BOOK-${typeInfo.code}-${year}-${setNum}`);
       if (existingDoc) {
-        const targetBookCode = existingBook ? existingBook.book_code : (existingDoc.book_code || s.book_code || '');
         if (existingDoc.student_name !== fullName || existingDoc.doc_number !== docNum || existingDoc.book_number !== setNum || existingDoc.academic_year !== year || (targetBookCode && existingDoc.book_code !== targetBookCode)) {
           existingDoc.student_name = fullName;
           existingDoc.doc_number = docNum;
@@ -456,9 +468,125 @@ class RelationalDatabase {
           existingDoc.updated_at = new Date().toISOString();
           updated = true;
         }
+      } else if (!deletedDocuments.includes(dKey)) {
+        const newDoc = {
+          id: documents.length + 1,
+          doc_code: docCode,
+          student_id: sid,
+          student_name: fullName,
+          doc_type_code: docTypeCode,
+          academic_year: year,
+          book_number: setNum,
+          doc_number: docNum,
+          book_code: targetBookCode,
+          status: 'stored',
+          location_code: locationCode,
+          updated_at: new Date().toISOString()
+        };
+        documents.push(newDoc);
+        docMapBySid.set(sKey, newDoc);
+        docMapByCode.set(dKey, newDoc);
+        updated = true;
+      }
+
+      // Check Book deduplicating by book_number + academic_year OR book_code
+      const bCode = existingBook ? existingBook.book_code : (s.book_code || `BOOK-${typeInfo.code}-${year}-${setNum}`);
+      const bKey = bCode.toLowerCase();
+      const nyKey = `${setNum}_${year}`.toLowerCase();
+
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+        const newBk = {
+          id: books.length + 1,
+          book_code: bCode,
+          doc_type_code: typeInfo.name,
+          academic_year: year,
+          book_number: setNum,
+          start_no: '001',
+          end_no: '050',
+          item_count: 50,
+          location_code: locationCode,
+          updated_at: new Date().toISOString()
+        };
+        books.push(newBk);
+        bookMap.set(bKey, newBk);
+        bookByNumberYear.set(nyKey, newBk);
+        updated = true;
       }
     });
 
+    // Cross Link 2: From Documents -> Auto add missing Students & Books
+    documents.forEach(d => {
+      const sid = String(d.student_id || '').trim();
+      const sKey = sid.toLowerCase();
+      if (sid && !studentMap.has(sKey) && !deletedStudents.includes(sKey)) {
+        const full = d.student_name || '';
+        let prefix = '';
+        let firstName = full;
+        let lastName = '';
+
+        if (full.startsWith('นาย')) { prefix = 'นาย'; firstName = full.replace('นาย', '').trim(); }
+        else if (full.startsWith('นางสาว')) { prefix = 'นางสาว'; firstName = full.replace('นางสาว', '').trim(); }
+        else if (full.startsWith('นาง')) { prefix = 'นาง'; firstName = full.replace('นาง', '').trim(); }
+        else if (full.startsWith('เด็กชาย')) { prefix = 'เด็กชาย'; firstName = full.replace('เด็กชาย', '').trim(); }
+        else if (full.startsWith('เด็กหญิง')) { prefix = 'เด็กหญิง'; firstName = full.replace('เด็กหญิง', '').trim(); }
+
+        const parts = firstName.split(/\s+/);
+        if (parts.length > 1) {
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+
+        const newSt = {
+          id: students.length + 1,
+          student_id: sid,
+          prefix: prefix,
+          first_name: firstName || full || 'นักเรียน',
+          last_name: lastName,
+          previous_name: '',
+          grade_level: 'ม.1',
+          academic_year: d.academic_year || '2569',
+          doc_number: d.doc_number || '001',
+          set_number: d.book_number || '01',
+          status: 'ปกติ',
+          updated_at: new Date().toISOString()
+        };
+        students.push(newSt);
+        studentMap.set(sKey, newSt);
+        updated = true;
+      }
+
+      // Check Book deduplicating by book_number + academic_year OR book_code
+      const bNum = String(d.book_number || '01').trim();
+      const dType = d.doc_type_code || 'ปพ.1';
+      const aYear = String(d.academic_year || '2569').trim();
+      const typeInfo = this.normalizeDocType(dType);
+      const bCode = d.book_code || `BOOK-${typeInfo.code}-${aYear}-${bNum}`;
+      const bKey = bCode.toLowerCase();
+      const nyKey = `${bNum}_${aYear}`.toLowerCase();
+
+      if (!bookMap.has(bKey) && !bookByNumberYear.has(nyKey) && !deletedBooks.includes(bKey)) {
+        const newBk = {
+          id: books.length + 1,
+          book_code: bCode,
+          doc_type_code: typeInfo.name,
+          academic_year: aYear,
+          book_number: bNum,
+          start_no: '001',
+          end_no: '050',
+          item_count: 50,
+          location_code: d.location_code || 'LOC-A01-01-01',
+          updated_at: new Date().toISOString()
+        };
+        books.push(newBk);
+        bookMap.set(bKey, newBk);
+        bookByNumberYear.set(nyKey, newBk);
+        updated = true;
+      }
+    });
+
+    this.data.students = students;
+    this.data.documents = documents;
+    this.data.books = books;
     return updated;
   }
 
